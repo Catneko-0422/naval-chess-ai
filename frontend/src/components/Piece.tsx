@@ -10,8 +10,6 @@ interface PieceProps {
 }
 
 const Piece: React.FC<PieceProps> = ({ ship, onRotate }) => {
-  console.log(`船 ${ship.id} 當前位置: (${ship.row}, ${ship.col})`);
-
   return (
     <div
       className="absolute bg-sky-500 text-white font-bold flex items-center justify-center cursor-pointer"

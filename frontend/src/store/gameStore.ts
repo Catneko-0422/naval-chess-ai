@@ -69,8 +69,29 @@ const getRandomPosition = (
   return { row, col, orientation };
 };
 
+const boardSize = 10;
 const useGameStore = create<GameState>((set) => ({
   ships: [],
+
+  showShips: (ships: Ship[]) => {
+    //建立 10x10 的0 矩陣
+    const matrix = Array.from({ length: boardSize }, () =>
+      Array(boardSize).fill(0),
+    );
+
+    ships.forEach(({ row, col, size, orientation }) => {
+      const isVertical = orientation === "horizontal";
+
+      for (let i = 0; i < size; i++) {
+        const r = row + (isVertical ? 0 : i);
+        const c = col + (isVertical ? i : 0);
+        matrix[r][c] = 1;
+      }
+    });
+
+    return matrix;
+  },
+
   initializeShips: () => {
     const shipSizes = [2, 3, 3, 4, 5];
     const newShips: Ship[] = [];
