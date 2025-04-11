@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { io, Socket } from "socket.io-client";
 
 export interface Ship {
   id: number;
@@ -10,9 +11,19 @@ export interface Ship {
 
 interface GameState {
   ships: Ship[];
+  socket: Socket | null;
+  gameStatus: "waiting" | "playing" | "finished";
+  currentTurn: string | null;
+  opponentId: string | null;
+  roomId: string | null;
   initializeShips: () => void;
   moveShip: (id: number, row: number, col: number) => void;
   rotateShip: (id: number) => void;
+  showShips: (ships: Ship[]) => number[][];
+  connectToServer: () => void;
+  joinGame: () => void;
+  updateBoard: (board: number[][]) => void;
+  makeMove: (move: { row: number; col: number }) => void;
 }
 
 // 確保船隻不會與其他船隻重疊
@@ -70,27 +81,13 @@ const getRandomPosition = (
 };
 
 const boardSize = 10;
-const useGameStore = create<GameState>((set) => ({
+const useGameStore = create<GameState>((set, get) => ({
   ships: [],
-
-  showShips: (ships: Ship[]) => {
-    //建立 10x10 的0 矩陣
-    const matrix = Array.from({ length: boardSize }, () =>
-      Array(boardSize).fill(0),
-    );
-
-    ships.forEach(({ row, col, size, orientation }) => {
-      const isVertical = orientation === "horizontal";
-
-      for (let i = 0; i < size; i++) {
-        const r = row + (isVertical ? 0 : i);
-        const c = col + (isVertical ? i : 0);
-        matrix[r][c] = 1;
-      }
-    });
-
-    return matrix;
-  },
+  socket: null,
+  gameStatus: "waiting",
+  currentTurn: null,
+  opponentId: null,
+  roomId: null,
 
   initializeShips: () => {
     const shipSizes = [2, 3, 3, 4, 5];
@@ -132,16 +129,72 @@ const useGameStore = create<GameState>((set) => ({
     set({ ships: newShips });
   },
 
-  moveShip: (id, row, col) =>
+  connectToServer: () => {
+    const socket = io("http://localhost:5000");
+    
+    socket.on("connect", () => {
+      console.log("Connected to server");
+    });
+
+    socket.on("waiting_for_opponent", () => {
+      set({ gameStatus: "waiting" });
+    });
+
+    socket.on("game_started", (data) => {
+      set({
+        gameStatus: "playing",
+        roomId: data.room_id,
+        opponentId: data.player1 === socket.id ? data.player2 : data.player1,
+        currentTurn: data.current_turn,
+      });
+    });
+
+    socket.on("board_updated", (data) => {
+      // 處理對手的棋盤更新
+      console.log("Board updated by opponent:", data);
+    });
+
+    socket.on("move_made", (data) => {
+      set({ currentTurn: data.next_turn });
+    });
+
+    socket.on("player_disconnected", () => {
+      set({ gameStatus: "finished" });
+    });
+
+    set({ socket });
+  },
+
+  joinGame: () => {
+    const { socket } = get();
+    if (socket) {
+      socket.emit("join_game");
+    }
+  },
+
+  updateBoard: (board) => {
+    const { socket, roomId } = get();
+    if (socket && roomId) {
+      socket.emit("update_board", { board });
+    }
+  },
+
+  makeMove: (move) => {
+    const { socket, roomId } = get();
+    if (socket && roomId) {
+      socket.emit("make_move", { move });
+    }
+  },
+
+  moveShip: (id, row, col) => {
     set((state) => {
       const boardSize = 10;
       const shipToMove = state.ships.find((ship) => ship.id === id);
-      if (!shipToMove) return state; // 找不到該船隻則直接返回
+      if (!shipToMove) return state;
 
       let newRow = row;
       let newCol = col;
 
-      // 確保新位置不會超出邊界
       if (
         shipToMove.orientation === "horizontal" &&
         newCol + shipToMove.size > boardSize
@@ -155,7 +208,6 @@ const useGameStore = create<GameState>((set) => ({
         newRow = boardSize - shipToMove.size;
       }
 
-      // 計算新位置的所有佔據格子
       const newOccupiedCells = calculateOccupiedCells(
         newRow,
         newCol,
@@ -163,9 +215,7 @@ const useGameStore = create<GameState>((set) => ({
         shipToMove.orientation,
       );
 
-      // 檢查是否與其他船隻重疊
       if (checkCollision(state.ships, id, newOccupiedCells)) {
-        // 嘗試尋找合法位置
         for (let r = 0; r < boardSize; r++) {
           for (let c = 0; c < boardSize; c++) {
             const tempRow = r;
@@ -198,43 +248,25 @@ const useGameStore = create<GameState>((set) => ({
         }
       }
 
-      console.log(
-        `船隻 ${id} 移動到 (${newRow}, ${newCol}), 方向: ${shipToMove.orientation}`,
-      );
-
       const updatedShips = state.ships.map((ship) =>
         ship.id === id ? { ...ship, row: newRow, col: newCol } : ship,
       );
 
-      // 計算所有被船隻佔據的格子
-      const occupiedCells: { row: number; col: number }[] = [];
-      updatedShips.forEach((ship) => {
-        const shipOccupiedCells = calculateOccupiedCells(
-          ship.row,
-          ship.col,
-          ship.size,
-          ship.orientation,
-        );
-        occupiedCells.push(...shipOccupiedCells);
-      });
-
-      console.log("所有被船隻佔據的格子:", occupiedCells);
-
       return { ships: updatedShips };
-    }),
+    });
+  },
 
-  rotateShip: (id) =>
+  rotateShip: (id) => {
     set((state) => {
       const boardSize = 10;
       const shipToRotate = state.ships.find((ship) => ship.id === id);
-      if (!shipToRotate) return state; // 找不到該船隻則直接返回
+      if (!shipToRotate) return state;
 
       const newOrientation: "horizontal" | "vertical" =
         shipToRotate.orientation === "horizontal" ? "vertical" : "horizontal";
       let newRow = shipToRotate.row;
       let newCol = shipToRotate.col;
 
-      // 計算旋轉後的所有佔據格子
       const newOccupiedCells = calculateOccupiedCells(
         newRow,
         newCol,
@@ -242,7 +274,6 @@ const useGameStore = create<GameState>((set) => ({
         newOrientation,
       );
 
-      // 確保旋轉後的船隻不會超出邊界
       if (
         newOrientation === "horizontal" &&
         newCol + shipToRotate.size > boardSize
@@ -256,53 +287,38 @@ const useGameStore = create<GameState>((set) => ({
         newRow = boardSize - shipToRotate.size;
       }
 
-      // 檢查是否會與其他船隻重疊
       if (checkCollision(state.ships, id, newOccupiedCells)) {
-        // 嘗試尋找合法的移動位置
-        for (let r = 0; r < boardSize; r++) {
-          for (let c = 0; c < boardSize; c++) {
-            const tempRow = r;
-            const tempCol = c;
-
-            if (
-              newOrientation === "horizontal" &&
-              tempCol + shipToRotate.size > boardSize
-            )
-              continue;
-            if (
-              newOrientation === "vertical" &&
-              tempRow + shipToRotate.size > boardSize
-            )
-              continue;
-
-            const tempOccupiedCells = calculateOccupiedCells(
-              tempRow,
-              tempCol,
-              shipToRotate.size,
-              newOrientation,
-            );
-
-            if (!checkCollision(state.ships, id, tempOccupiedCells)) {
-              newRow = tempRow;
-              newCol = tempCol;
-              break;
-            }
-          }
-        }
+        return state;
       }
-
-      console.log(
-        `船隻 ${id} 旋轉為 ${newOrientation} 方向, 位置: (${newRow}, ${newCol})`,
-      );
 
       const updatedShips = state.ships.map((ship) =>
         ship.id === id
-          ? { ...ship, row: newRow, col: newCol, orientation: newOrientation }
+          ? { ...ship, orientation: newOrientation, row: newRow, col: newCol }
           : ship,
       );
 
       return { ships: updatedShips };
-    }),
+    });
+  },
+
+  showShips: (ships) => {
+    const boardSize = 10;
+    const matrix = Array.from({ length: boardSize }, () =>
+      Array(boardSize).fill(0),
+    );
+
+    ships.forEach(({ row, col, size, orientation }) => {
+      const isVertical = orientation === "vertical";
+
+      for (let i = 0; i < size; i++) {
+        const r = row + (isVertical ? i : 0);
+        const c = col + (isVertical ? 0 : i);
+        matrix[r][c] = 1;
+      }
+    });
+
+    return matrix;
+  },
 }));
 
 export default useGameStore;

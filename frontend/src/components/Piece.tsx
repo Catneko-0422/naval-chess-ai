@@ -1,15 +1,12 @@
+import { Ship } from "../store/gameStore";
+
 interface PieceProps {
-  ship: {
-    id: number;
-    row: number;
-    col: number;
-    size: number;
-    orientation: "horizontal" | "vertical";
-  };
+  ship: Ship;
   onRotate: () => void;
 }
 
-const Piece: React.FC<PieceProps> = ({ ship, onRotate }) => {
+const Piece: React.FC<PieceProps> = ({ ship: shipData, onRotate }) => {
+  const ship = shipData as Ship;
   return (
     <div
       className="absolute bg-sky-500 text-white font-bold flex items-center justify-center cursor-pointer"
