@@ -137,15 +137,16 @@ const useGameStore = create<GameState>((set, get) => ({
   },
 
   connectToServer: () => {
-    const socket = io('wss://naval-backend.nekocat.cc', {
+    const socket = io('https://naval-backend.nekocat.cc', {
       path: '/socket.io',
-      transports: ['polling', 'websocket'],
+      transports: ['polling'],  // 只使用 polling
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
       secure: true,
       rejectUnauthorized: false,
-      forceNew: true
+      forceNew: true,
+      timeout: 10000
     });
     
     socket.on("connect", () => {

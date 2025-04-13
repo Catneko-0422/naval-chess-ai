@@ -37,6 +37,13 @@ const Board: React.FC = () => {
     }
   };
 
+  const startAIGame = (difficulty: string) => {
+    const socket = useGameStore.getState().socket;
+    if (socket) {
+      socket.emit("start_ai_game", { difficulty });
+    }
+  };
+
   return (
     <div className="flex flex-col items-center">
       {/* 遊戲狀態顯示 */}
@@ -89,13 +96,36 @@ const Board: React.FC = () => {
       </div>
 
       {/* 按鈕組 */}
-      <div className="flex gap-4 mt-4">
-        <button
-          onClick={joinGame}
-          className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow-md transition-colors duration-200"
-        >
-          與其他玩家對戰
-        </button>
+      <div className="flex flex-col gap-4 mt-4">
+        <div className="flex gap-4">
+          <button
+            onClick={joinGame}
+            className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow-md transition-colors duration-200"
+          >
+            與其他玩家對戰
+          </button>
+        </div>
+        
+        <div className="flex gap-4">
+          <button
+            onClick={() => startAIGame('easy')}
+            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md transition-colors duration-200"
+          >
+            與AI對戰 (簡單)
+          </button>
+          <button
+            onClick={() => startAIGame('medium')}
+            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md transition-colors duration-200"
+          >
+            與AI對戰 (中等)
+          </button>
+          <button
+            onClick={() => startAIGame('hard')}
+            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md transition-colors duration-200"
+          >
+            與AI對戰 (困難)
+          </button>
+        </div>
       </div>
     </div>
   );

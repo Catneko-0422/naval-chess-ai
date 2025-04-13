@@ -19,7 +19,7 @@ ENV NODE_ENV=production
 ENV SKIP_PREFLIGHT_CHECK=true
 ENV ESLINT_NO_DEV_ERRORS=true
 ENV TSC_COMPILE_ON_ERROR=true
-ENV NEXT_PUBLIC_API_URL=http://backend:8081
+ENV NEXT_PUBLIC_API_URL=https://naval-backend.nekocat.cc
 
 # 構建應用
 RUN npm run build
@@ -36,8 +36,8 @@ COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
 
 # 暴露端口
-EXPOSE 3000
+EXPOSE 8080
 
 # 啟動應用
-ENV PORT=3000
+ENV PORT=8080
 CMD ["node", "server.js"] 
