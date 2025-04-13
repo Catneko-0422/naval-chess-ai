@@ -3,14 +3,27 @@ from flask_socketio import SocketIO, emit, join_room, leave_room
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 import json
+import os
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///naval_chess.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////app/instance/naval_chess.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# 確保實例目錄存在
+os.makedirs('/app/instance', exist_ok=True)
+
 db = SQLAlchemy(app)
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app,
+    cors_allowed_origins=["https://naval-frontend.nekocat.cc"], 
+    path="/socket.io",
+    async_mode='eventlet',
+    logger=True,
+    engineio_logger=True,
+    ping_timeout=60,
+    ping_interval=25,
+    max_http_buffer_size=1e8
+)
 
 # 數據庫模型
 class Game(db.Model):
@@ -131,4 +144,4 @@ def handle_make_move(data):
     }, room=room_id)
 
 if __name__ == '__main__':
-    socketio.run(app, debug=True, host='0.0.0.0', port=5000) 
+    app.run(host='0.0.0.0', port=8081) 

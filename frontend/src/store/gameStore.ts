@@ -16,6 +16,9 @@ interface GameState {
   currentTurn: string | null;
   opponentId: string | null;
   roomId: string | null;
+  isLocalMultiplayer: boolean;
+  localPlayerId: string | null;
+  localOpponentId: string | null;
   initializeShips: () => void;
   moveShip: (id: number, row: number, col: number) => void;
   rotateShip: (id: number) => void;
@@ -24,6 +27,8 @@ interface GameState {
   joinGame: () => void;
   updateBoard: (board: number[][]) => void;
   makeMove: (move: { row: number; col: number }) => void;
+  startLocalMultiplayer: () => void;
+  makeLocalMove: (move: { row: number; col: number }) => void;
 }
 
 // 確保船隻不會與其他船隻重疊
@@ -80,7 +85,6 @@ const getRandomPosition = (
   return { row, col, orientation };
 };
 
-const boardSize = 10;
 const useGameStore = create<GameState>((set, get) => ({
   ships: [],
   socket: null,
@@ -88,6 +92,9 @@ const useGameStore = create<GameState>((set, get) => ({
   currentTurn: null,
   opponentId: null,
   roomId: null,
+  isLocalMultiplayer: false,
+  localPlayerId: null,
+  localOpponentId: null,
 
   initializeShips: () => {
     const shipSizes = [2, 3, 3, 4, 5];
@@ -130,7 +137,16 @@ const useGameStore = create<GameState>((set, get) => ({
   },
 
   connectToServer: () => {
-    const socket = io("http://localhost:5000");
+    const socket = io('wss://naval-backend.nekocat.cc', {
+      path: '/socket.io',
+      transports: ['polling', 'websocket'],
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+      secure: true,
+      rejectUnauthorized: false,
+      forceNew: true
+    });
     
     socket.on("connect", () => {
       console.log("Connected to server");
@@ -318,6 +334,29 @@ const useGameStore = create<GameState>((set, get) => ({
     });
 
     return matrix;
+  },
+
+  startLocalMultiplayer: () => {
+    const playerId = Math.random().toString(36).substring(7);
+    const opponentId = Math.random().toString(36).substring(7);
+    set({
+      isLocalMultiplayer: true,
+      localPlayerId: playerId,
+      localOpponentId: opponentId,
+      gameStatus: "playing",
+      currentTurn: playerId
+    });
+  },
+
+  makeLocalMove: (move: { row: number; col: number }) => {
+    const { localPlayerId, localOpponentId, currentTurn } = get();
+    if (currentTurn === localPlayerId) {
+      set({ currentTurn: localOpponentId });
+    } else {
+      set({ currentTurn: localPlayerId });
+    }
+    // 在這裡處理移動邏輯
+    console.log("Move made:", move);
   },
 }));
 

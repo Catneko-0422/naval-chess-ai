@@ -10,15 +10,14 @@ const Board: React.FC = () => {
   const gridSize = 40; // 每個格子的大小 (像素)
   const {
     ships,
-    moveShip,
-    rotateShip,
-    initializeShips,
     gameStatus,
     currentTurn,
+    initializeShips,
+    moveShip,
+    rotateShip,
     connectToServer,
     joinGame,
-    updateBoard,
-    makeMove,
+    makeMove
   } = useGameStore();
 
   useEffect(() => {
