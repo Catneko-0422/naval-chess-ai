@@ -1,12 +1,6 @@
 # Naval Chess WebSocket 伺服器 API 文檔
 ## 簡介
-這是 Naval Chess 遊戲的 WebSocket 伺服器，使用 Flask 和 Flask-SocketIO 實現。伺服器支援玩家加入遊戲、更新棋盤、執行棋步等功能。此文檔描述了各個 WebSocket 事件及其功能。
-
-### 0.``
-- **觸發時機:** 
-- **功能:** 
-- **參數:** 
-- **返回:** 
+這是 Naval Chess 遊戲的 WebSocket 伺服器，使用 Flask 和 Flask-SocketIO 實現。伺服器支援玩家加入遊戲、更新棋盤、執行棋步等功能。此文檔描述了各個 WebSocket 事件及其功能。 
 
 ## WebSocket 事件
 ### 1.`connect`
@@ -58,9 +52,51 @@
 ### 3.`update_board`
 - **觸發時機:** 當玩家更新棋盤時，會發送這個事件。
 - **功能:** 更新當前遊戲的棋盤狀態。
-- **參數:** 待定，根據遊戲邏輯來決定。
-- **返回:** 無
-
+- **參數:**
+    - 查詢現在遊戲棋盤狀態
+        ```json
+        {
+          "room_id": "room_uuid",
+          "player": "player_id"
+        }
+        ``` 
+- **返回:** 
+    ```json
+    {
+      "player1": [[0,0,0,0,0,0,0,0,0,0],
+                  [0,0,0,0,0,0,0,1,0,0],
+                  [1,0,0,0,0,0,0,1,0,0],
+                  [1,0,0,0,0,0,0,1,0,0],
+                  [1,0,0,0,1,0,0,1,0,0],
+                  [1,0,0,0,1,0,0,0,0,1],
+                  [1,0,0,0,1,0,0,0,0,1],
+                  [0,0,0,0,0,0,0,0,0,0],
+                  [0,0,0,0,0,0,0,0,0,0],
+                  [0,0,1,1,1,0,0,0,0,0]],
+      "player1_ships": [{"id":0, "size":2, "row":5, "col":9, "orientation":"horizontal"},
+                        {"id":1, "size":3, "row":4, "col":4, "orientation":"vertical"},
+                        {"id":2, "size":3, "row":9, "col":2, "orientation":"horizontal"},
+                        {"id":3, "size":4, "row":1, "col":7, "orientation":"vertical"},
+                        {"id":4, "size":5, "row":2, "col":0, "orientation":"vertical"}],
+      "player2": [[0,0,0,0,0,0,0,0,0,0],
+                  [0,0,0,0,0,0,0,1,0,0],
+                  [1,0,0,0,0,0,0,1,0,0],
+                  [1,0,0,0,0,0,0,1,0,0],
+                  [1,0,0,0,1,0,0,1,0,0],
+                  [1,0,0,0,1,0,0,0,0,1],
+                  [1,0,0,0,1,0,0,0,0,1],
+                  [0,0,0,0,0,0,0,0,0,0],
+                  [0,0,0,0,0,0,0,0,0,0],
+                  [0,0,1,1,1,0,0,0,0,0]],
+      "player2_ships": [{"id":0, "size":2, "row":5, "col":9, "orientation":"horizontal"},
+                        {"id":1, "size":3, "row":4, "col":4, "orientation":"vertical"},
+                        {"id":2, "size":3, "row":9, "col":2, "orientation":"horizontal"},
+                        {"id":3, "size":4, "row":1, "col":7, "orientation":"vertical"},
+                        {"id":4, "size":5, "row":2, "col":0, "orientation":"vertical"}],
+      "is_ai_game": false
+    }
+    ```
+        
 ### 4.`make_move`
 - **觸發時機:** 當玩家選擇出招時，會發送這個事件。
 - **功能:** 玩家進行一次操作，可能是攻擊、移動等。
