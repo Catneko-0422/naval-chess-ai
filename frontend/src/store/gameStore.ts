@@ -137,16 +137,17 @@ const useGameStore = create<GameState>((set, get) => ({
   },
 
   connectToServer: () => {
-    const socket = io('https://naval-backend.nekocat.cc', {
+    const socket = io(process.env.NEXT_PUBLIC_API_URL || 'https://naval-backend.nekocat.cc', {
       path: '/socket.io',
-      transports: ['polling'],  // 只使用 polling
+      transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
-      secure: true,
-      rejectUnauthorized: false,
-      forceNew: true,
-      timeout: 10000
+      reconnectionDelayMax: 5000,
+      timeout: 20000,
+      autoConnect: true,
+      withCredentials: true,
+      secure: true
     });
     
     socket.on("connect", () => {
@@ -177,6 +178,26 @@ const useGameStore = create<GameState>((set, get) => ({
 
     socket.on("player_disconnected", () => {
       set({ gameStatus: "finished" });
+    });
+
+    socket.on("connect_error", (error) => {
+      console.error("Socket connection error:", error);
+    });
+
+    socket.on("connect_timeout", (timeout) => {
+      console.error("Socket connection timeout:", timeout);
+    });
+
+    socket.on("reconnection_attempt", (attemptNumber) => {
+      console.log("Reconnection attempt:", attemptNumber);
+    });
+
+    socket.on("reconnection_error", (error) => {
+      console.error("Reconnection error:", error);
+    });
+
+    socket.on("reconnection_failed", () => {
+      console.error("Reconnection failed");
     });
 
     set({ socket });

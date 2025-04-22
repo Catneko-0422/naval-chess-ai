@@ -5,14 +5,19 @@ import Piece from "./Piece";
 import useGameStore from "../store/gameStore";
 import { Ship } from "../store/gameStore";
 
-const Board: React.FC = () => {
+interface BoardProps {
+  who: string;
+}
+
+const Board = ({ who }: BoardProps) => {
   const boardSize = 10;
-  const gridSize = 40; // 每個格子的大小 (像素)
+  const gridSize = who === "player" ? 40 : 20; 
   const {
     ships,
     gameStatus,
     currentTurn,
     initializeShips,
+    showShips,
     moveShip,
     rotateShip,
     connectToServer,
@@ -37,10 +42,10 @@ const Board: React.FC = () => {
     }
   };
 
-  const startAIGame = (difficulty: string) => {
+  const startAIGame = () => {
     const socket = useGameStore.getState().socket;
     if (socket) {
-      socket.emit("start_ai_game", { difficulty });
+      socket.emit("start_ai_game");
     }
   };
 
@@ -48,14 +53,20 @@ const Board: React.FC = () => {
     <div className="flex flex-col items-center">
       {/* 遊戲狀態顯示 */}
       <div className="mb-4 text-white">
-        {gameStatus === "waiting" && "等待對手加入..."}
-        {gameStatus === "playing" && (
-          <div>
-            {currentTurn === useGameStore.getState().socket?.id
-              ? "輪到你了"
-              : "等待對手行動"}
-          </div>
+        {who === "player" && (
+          <>
+            { gameStatus === "waiting" && "等待對手加入..." }
+            { gameStatus === "playing" && (
+              <div>
+                { currentTurn === useGameStore.getState().socket?.id
+                  ? "輪到你了" 
+                  : "等待對手行動"
+                }
+              </div>
+            )}
+          </>
         )}
+
         {gameStatus === "finished" && "遊戲結束"}
       </div>
 
@@ -90,16 +101,21 @@ const Board: React.FC = () => {
           <Piece
             key={ship.id}
             ship={ship}
+            gridSize={gridSize}
             onRotate={() => rotateShip(ship.id)}
           />
         ))}
       </div>
 
       {/* 按鈕組 */}
-      <div className="flex flex-col gap-4 mt-4">
+      {who === "player" && (
+        <div className="flex flex-col gap-4 mt-4">
         <div className="flex gap-4">
           <button
-            onClick={joinGame}
+            onClick={()=>{showShips(ships).forEach(element => {
+              console.log(element);
+            });
+          console.log(ships)}}
             className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow-md transition-colors duration-200"
           >
             與其他玩家對戰
@@ -108,25 +124,14 @@ const Board: React.FC = () => {
         
         <div className="flex gap-4">
           <button
-            onClick={() => startAIGame('easy')}
+            onClick={() => startAIGame()}
             className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md transition-colors duration-200"
           >
-            與AI對戰 (簡單)
-          </button>
-          <button
-            onClick={() => startAIGame('medium')}
-            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md transition-colors duration-200"
-          >
-            與AI對戰 (中等)
-          </button>
-          <button
-            onClick={() => startAIGame('hard')}
-            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md transition-colors duration-200"
-          >
-            與AI對戰 (困難)
+            與AI對戰
           </button>
         </div>
       </div>
+      )}
     </div>
   );
 };

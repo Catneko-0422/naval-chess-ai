@@ -17,7 +17,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN mkdir -p /app/models
 
 # 複製模型文件
-COPY models/* /app/models/
+# COPY models/* /app/models/
 
 # 複製應用代碼
 COPY . .
