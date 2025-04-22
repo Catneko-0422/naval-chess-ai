@@ -278,7 +278,7 @@ def train():
     for episode in range(episodes):
         state_np = env.reset()  # (4,10,10)
         state = torch.FloatTensor(state_np).unsqueeze(0)  # (1,4,10,10)
-        total_reward = 0
+        total_reward = 1000
 
         for t in range(100):
             allowed_moves = get_allowed_actions(env)
