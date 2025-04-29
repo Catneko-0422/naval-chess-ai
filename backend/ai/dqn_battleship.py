@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import random
+import matplotlib.pyplot as plt
 from collections import deque
 from copy import deepcopy
 from battleship_board import generate_board, BOARD_SIZE, SHIP_SIZES
@@ -27,13 +28,13 @@ class BattleshipEnv:
         self.reset()
 
     def reset(self):
-        self.ship_board = generate_board()  # 隱藏棋盤，AI 不可見
+        self.ship_board = generate_board()['board']  # 隱藏棋盤，AI 不可見
         # 初始化 state: 全為 0
         self.state = [[0] * BOARD_SIZE for _ in range(BOARD_SIZE)]
         self.remaining = sum(row.count(1) for row in self.ship_board)
         # 初始化剩餘船艦列表（深複製一份）
         self.remaining_ships = deepcopy(SHIP_SIZES)
-        self.last_hit_position = None  # 目標模式：記錄最新命中位置
+        self.last_hit_position = None  # 目標模式：記錄最新命中位置（這邊已無用）
         return self.get_feature_map()
 
     def get_feature_map(self):
@@ -53,7 +54,7 @@ class BattleshipEnv:
         done = False
 
         if self.state[x][y] != 0:
-            reward = -1  # 重複攻擊的懲罰
+            reward = 1  # 重複攻擊的懲罰
         elif self.ship_board[x][y] == 1:
             self.state[x][y] = 2  # 命中
             reward = 1
@@ -75,6 +76,7 @@ class BattleshipEnv:
         return self.get_feature_map(), reward, done
 
     def available_actions(self):
+        # 提供合法未攻擊動作，主要用於環境評估，但在學習時不再使用此過濾策略
         return [i for i in range(BOARD_SIZE * BOARD_SIZE)
                 if self.state[i // BOARD_SIZE][i % BOARD_SIZE] == 0]
 
@@ -111,7 +113,7 @@ class BattleshipEnv:
                         # 若 last_hit_position 屬於此艘船，則清空
                         if self.last_hit_position in ship_cells:
                             self.last_hit_position = None
-
+    
     def compute_probability_density(self):
         """
         計算機率密度：對於每個 cell，檢查剩餘的每一艘船從該 cell 能否合法放置（水平、垂直）
@@ -159,7 +161,7 @@ class DQN(nn.Module):
         x = self.conv(x)
         x = x.view(x.size(0), -1)
         return self.fc(x)
-
+    
 #############################
 # Allowed Action 選取策略
 #############################
@@ -259,6 +261,9 @@ def get_allowed_actions(env):
 # Training
 #############################
 def train():
+    reward_history = []
+    epsilon_history = []
+
     env = BattleshipEnv()
     model = DQN()
     target_model = DQN()
@@ -272,24 +277,21 @@ def train():
     epsilon = 1.0
     epsilon_decay = 0.995
     epsilon_min = 0.01
-    update_target_steps = 20
+    update_target_steps = 10
     episodes = 1000
 
     for episode in range(episodes):
-        state_np = env.reset()  # (4,10,10)
-        state = torch.FloatTensor(state_np).unsqueeze(0)  # (1,4,10,10)
-        total_reward = 1000
+        state_np = env.reset()  # (4, BOARD_SIZE, BOARD_SIZE)
+        state = torch.FloatTensor(state_np).unsqueeze(0)  # (1,4,BOARD_SIZE,BOARD_SIZE)
+        total_reward = 0  # 重新設定初始回合獎勵
 
         for t in range(100):
-            allowed_moves = get_allowed_actions(env)
+            # 探索階段：直接從全部 100 個位置中選擇
             if random.random() < epsilon:
-                action = random.choice(allowed_moves)
+                action = random.randint(0, BOARD_SIZE * BOARD_SIZE - 1)
             else:
                 with torch.no_grad():
-                    q_values = model(state).squeeze()  # (100,)
-                    for i in range(BOARD_SIZE * BOARD_SIZE):
-                        if i not in allowed_moves:
-                            q_values[i] = -1e9
+                    q_values = model(state).squeeze()  # (BOARD_SIZE*BOARD_SIZE,)
                     action = torch.argmax(q_values).item()
 
             next_state_np, reward, done = env.step(action)
@@ -301,6 +303,7 @@ def train():
             if done:
                 break
 
+        # 在記憶庫達到一定量後，進行 mini-batch 訓練
         if len(memory) >= batch_size:
             batch = random.sample(memory, batch_size)
             state_b, action_b, reward_b, next_state_b, done_b = zip(*batch)
@@ -312,7 +315,9 @@ def train():
 
             q_values = model(state_b).gather(1, action_b)
             with torch.no_grad():
-                next_q = target_model(next_state_b).max(1, keepdim=True)[0]
+                # 採用 Double DQN 策略：由 model 選擇最佳動作，由 target_model 評估該動作
+                next_actions = model(next_state_b).argmax(1, keepdim=True)
+                next_q = target_model(next_state_b).gather(1, next_actions)
                 q_target = reward_b + (1 - done_b) * gamma * next_q
 
             loss = loss_fn(q_values, q_target)
@@ -325,10 +330,37 @@ def train():
         if epsilon > epsilon_min:
             epsilon *= epsilon_decay
 
+        reward_history.append(total_reward)
+        epsilon_history.append(epsilon)
+
         print(f"Episode {episode+1}, Total Reward: {total_reward:.2f}, Epsilon: {epsilon:.3f}")
 
     torch.save(model.state_dict(), "dqn_battleship.pth")
     print("訓練完成並儲存模型")
+
+    # 第一張圖：Total Reward
+    plt.figure(figsize=(10, 5))
+    plt.plot(reward_history, label="Total Reward", color='blue')
+    plt.xlabel("Episode")
+    plt.ylabel("Total Reward")
+    plt.title("DQN Training - Total Reward Over Episodes")
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig("reward_plot.png")
+    plt.show()
+
+    # 第二張圖：Epsilon
+    plt.figure(figsize=(10, 5))
+    plt.plot(epsilon_history, label="Epsilon", color='orange')
+    plt.xlabel("Episode")
+    plt.ylabel("Epsilon")
+    plt.title("DQN Training - Epsilon Over Episodes")
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig("epsilon_plot.png")
+    plt.show()
 
 if __name__ == "__main__":
     train()
