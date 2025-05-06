@@ -1,12 +1,14 @@
+import os
 import torch
 import numpy as np
-from battleship_board import generate_board
-from env import BattleshipEnv
-from dqn_battleship import DQN, BOARD_SIZE, get_allowed_actions
+from .battleship_board import generate_board
+from .env import BattleshipEnv
+from .dqn_battleship import DQN, BOARD_SIZE, get_allowed_actions
 
-board = generate_board()['board']
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(CURRENT_DIR, "dqn_battleship.pth")
 
-def evaluate(model_path="dqn_battleship.pth", board=generate_board()['board']):
+def evaluate(model_path=MODEL_PATH, board=generate_board()['board']):
     model = DQN()
     model.load_state_dict(torch.load(model_path, weights_only=True))
     model.eval()
@@ -28,6 +30,3 @@ def evaluate(model_path="dqn_battleship.pth", board=generate_board()['board']):
         result.append([x,y])
         state_feature, reward, done = env.step(action)
     return result
-
-if __name__ == "__main__":
-    print(evaluate("dqn_battleship.pth", board))

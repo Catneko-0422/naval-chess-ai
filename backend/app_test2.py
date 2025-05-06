@@ -5,9 +5,10 @@ import time
 sio = socketio.Client()
 
 room_id = None
-my_id = "player1"  # 可改為 "player1"
+my_id = "player2" 
 opponent_id = None
 my_turn = False
+known_sunken = set()
 
 # --- 事件監聽 ---
 
@@ -40,15 +41,39 @@ def on_game_started(data):
 def on_board(data):
     print("📦 目前棋盤：", data)
 
+import requests
+
 @sio.on('move_made')
 def on_move_made(data):
     global my_turn
     print(f"📍 {data['attacker']} 攻擊 ({data['x']}, {data['y']})，命中？{'✔️' if data['hit'] else '❌'}")
-    # 換我出手
-    if data['attacker'] != my_id:
-        my_turn = True
-        time.sleep(1)
-        attack_next()
+
+    if data['attacker'] == my_id:
+        if data['hit']:
+            # 🐾 查詢現在打掉了哪些船
+            try:
+                response = requests.post("http://localhost:5000/api/sunken_ships", json={
+                    "room_id": room_id,
+                    "player": "player1"  # 自己攻擊的是對手
+                })
+                if response.ok:
+                    result = response.json()
+                    new_sunken = set(result["sunken_ship_ids"]) - known_sunken
+                    for sid in new_sunken:
+                        print(f"💥 打掉了對方的第 {sid} 號船喵！")
+                    known_sunken.update(result["sunken_ship_ids"])
+            except Exception as e:
+                print(f"⚠️ 無法查詢擊沉船：{e}")
+
+            time.sleep(1)
+            attack_next()
+        else:
+            my_turn = False
+    else:
+        if not data['hit']:
+            my_turn = True
+            time.sleep(1)
+            attack_next()
 
 @sio.on('waiting_for_opponent')
 def on_waiting(msg):
@@ -58,12 +83,27 @@ def on_waiting(msg):
 def on_error(msg):
     print("⚠️ 錯誤：", msg)
 
+@sio.on('game_over')
+def on_game_over(data):
+    print(f"🏁 遊戲結束！勝利者是 {data['winner']} 🎉")
+    sio.disconnect()
+
+
 # --- 發送出招 ---
 
 def attack_next():
     global room_id, my_id
-    x, y = 0, 0  # 測試時固定，正式可用隨機
-    print(f"⚔️ {my_id} 攻擊 ({x}, {y})")
+    try:
+        # 輸入座標
+        print(f"\n⚔️ {my_id} 請輸入攻擊座標（0~9）")
+        x = int(input("輸入 X（列）座標："))
+        y = int(input("輸入 Y（行）座標："))
+        assert 0 <= x < 10 and 0 <= y < 10
+    except (ValueError, AssertionError):
+        print("⚠️ 輸入錯誤喵！請輸入 0~9 的整數～")
+        return attack_next()
+
+    print(f"🚀 發射！{my_id} 攻擊座標：({x}, {y})")
     sio.emit('make_move', {
         'room_id': room_id,
         'player': my_id,

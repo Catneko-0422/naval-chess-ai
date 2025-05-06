@@ -5,9 +5,10 @@ import time
 sio = socketio.Client()
 
 room_id = None
-my_id = "player2"  # 可改為 "player1"
+my_id = "player1" 
 opponent_id = None
 my_turn = False
+known_sunken = set()
 
 # --- 事件監聽 ---
 
@@ -40,15 +41,39 @@ def on_game_started(data):
 def on_board(data):
     print("📦 目前棋盤：", data)
 
+import requests
+
 @sio.on('move_made')
 def on_move_made(data):
     global my_turn
     print(f"📍 {data['attacker']} 攻擊 ({data['x']}, {data['y']})，命中？{'✔️' if data['hit'] else '❌'}")
-    # 換我出手
-    if data['attacker'] != my_id:
-        my_turn = True
-        time.sleep(1)
-        attack_next()
+
+    if data['attacker'] == my_id:
+        if data['hit']:
+            # 🐾 查詢現在打掉了哪些船
+            try:
+                response = requests.post("http://localhost:5000/api/sunken_ships", json={
+                    "room_id": room_id,
+                    "player": "player2"  # 自己攻擊的是對手
+                })
+                if response.ok:
+                    result = response.json()
+                    new_sunken = set(result["sunken_ship_ids"]) - known_sunken
+                    for sid in new_sunken:
+                        print(f"💥 打掉了對方的第 {sid} 號船喵！")
+                    known_sunken.update(result["sunken_ship_ids"])
+            except Exception as e:
+                print(f"⚠️ 無法查詢擊沉船：{e}")
+
+            time.sleep(1)
+            attack_next()
+        else:
+            my_turn = False
+    else:
+        if not data['hit']:
+            my_turn = True
+            time.sleep(1)
+            attack_next()
 
 @sio.on('waiting_for_opponent')
 def on_waiting(msg):
@@ -57,6 +82,12 @@ def on_waiting(msg):
 @sio.on('error')
 def on_error(msg):
     print("⚠️ 錯誤：", msg)
+
+@sio.on('game_over')
+def on_game_over(data):
+    print(f"🏁 遊戲結束！勝利者是 {data['winner']} 🎉")
+    sio.disconnect()
+
 
 # --- 發送出招 ---
 

@@ -1,6 +1,6 @@
 import numpy as np
 from copy import deepcopy
-from battleship_board import BOARD_SIZE, SHIP_SIZES
+from .battleship_board import BOARD_SIZE, SHIP_SIZES
 
 class BattleshipEnv:
     def __init__(self, board):

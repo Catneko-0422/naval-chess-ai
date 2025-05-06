@@ -6,7 +6,7 @@ import random
 import matplotlib.pyplot as plt
 from collections import deque
 from copy import deepcopy
-from battleship_board import generate_board, BOARD_SIZE, SHIP_SIZES
+from .battleship_board import generate_board, BOARD_SIZE, SHIP_SIZES
 
 #############################
 # Battleship Environment
