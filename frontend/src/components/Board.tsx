@@ -1,137 +1,172 @@
+// src/components/Board.tsx
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import useGameStore, { Ship } from "../store/gameStore";
 import Piece from "./Piece";
-import useGameStore from "../store/gameStore";
-import { Ship } from "../store/gameStore";
 
 interface BoardProps {
-  who: string;
+  who: "player" | "opponent";
 }
 
-const Board = ({ who }: BoardProps) => {
+const Board: React.FC<BoardProps> = ({ who }) => {
   const boardSize = 10;
-  const gridSize = who === "player" ? 40 : 20; 
+  const isPlayer = who === "player";
+
+  // 动态格子大小：自己最大 800px 宽度，否则固定 30px
+  const [gridSize, setGridSize] = useState(30);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (isPlayer) {
+      const size = Math.min(window.innerWidth * 0.6, 800) / boardSize;
+      setGridSize(size);
+    } else {
+      setGridSize(30);
+    }
+  }, [isPlayer]);
+
   const {
     ships,
+    showShips,
+    initializeShips,
+    connectToServer,
     gameStatus,
     currentTurn,
-    initializeShips,
-    showShips,
+    socket,
     moveShip,
     rotateShip,
-    connectToServer,
-    joinGame,
-    makeMove
+    makeMove,
   } = useGameStore();
 
+  // 自己或对手的击中/未中矩阵，只在对手棋盘展示
+  const [opMatrix, setOpMatrix] = useState<number[][]>(
+    Array.from({ length: boardSize }, () => Array(boardSize).fill(0))
+  );
+
+  // 一次性初始化
+  const inited = useRef(false);
   useEffect(() => {
+    if (inited.current) return;
     initializeShips();
     connectToServer();
-  }, [initializeShips, connectToServer]);
 
-  const handleDrop = (e: React.DragEvent, row: number, col: number) => {
+    // 监听 move_made 事件，更新对手矩阵
+    socket?.on("move_made", ({ attacker, x, y, hit }) => {
+      if (attacker === socket.id) {
+        setOpMatrix((prev) => {
+          const next = prev.map((row) => row.slice());
+          next[x][y] = hit ? 2 : 3;
+          return next;
+        });
+      }
+    });
+
+    inited.current = true;
+  }, [initializeShips, connectToServer, socket]);
+
+  // 拖放布船
+  const handleDrop = (e: React.DragEvent, r: number, c: number) => {
+    if (gameStatus !== "waiting" || !isPlayer) return;
     e.preventDefault();
-    const shipId = e.dataTransfer.getData("shipId");
-    moveShip(parseInt(shipId, 10), row, col);
+    const id = e.dataTransfer.getData("shipId");
+    if (id) moveShip(Number(id), r, c);
   };
 
-  const handleCellClick = (row: number, col: number) => {
-    if (gameStatus === "playing" && currentTurn === useGameStore.getState().socket?.id) {
-      makeMove({ row, col });
+  // 点击对手格子
+  const handleCellClick = (r: number, c: number) => {
+    if (
+      !isPlayer &&
+      gameStatus === "playing" &&
+      currentTurn === socket?.id &&
+      opMatrix[r][c] === 0
+    ) {
+      makeMove(r, c);
     }
   };
 
-  const startAIGame = () => {
-    const socket = useGameStore.getState().socket;
-    if (socket) {
-      socket.emit("start_ai_game");
-    }
-  };
+  // 矩阵：自己的布船 or 对手已击状态
+  const myMatrix = showShips(ships);
 
   return (
-    <div className="flex flex-col items-center">
-      {/* 遊戲狀態顯示 */}
-      <div className="mb-4 text-white">
-        {who === "player" && (
-          <>
-            { gameStatus === "waiting" && "等待對手加入..." }
-            { gameStatus === "playing" && (
-              <div>
-                { currentTurn === useGameStore.getState().socket?.id
-                  ? "輪到你了" 
-                  : "等待對手行動"
-                }
-              </div>
-            )}
-          </>
-        )}
+    <div
+      className="relative border-2 border-gray-600 rounded-lg p-2 bg-gray-700 shadow-inner"
+      style={{
+        width: boardSize * gridSize,
+        height: boardSize * gridSize,
+      }}
+    >
+      {/* 棋格 */}
+      {Array.from({ length: boardSize }).map((_, r) =>
+        Array.from({ length: boardSize }).map((_, c) => {
+          const baseStyle: React.CSSProperties = {
+            position: "absolute",
+            top: r * gridSize,
+            left: c * gridSize,
+            width: gridSize,
+            height: gridSize,
+            boxSizing: "border-box",
+            border: "1px solid #444",
+            backgroundColor: isPlayer
+              ? myMatrix[r][c] === 1
+                ? "rgba(200,200,200,0.4)"
+                : "#222"
+              : "#222",
+            cursor:
+              !isPlayer &&
+              gameStatus === "playing" &&
+              currentTurn === socket?.id &&
+              opMatrix[r][c] === 0
+                ? "pointer"
+                : "default",
+          };
+          return (
+            <div
+              key={`${r}-${c}`}
+              style={baseStyle}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => handleDrop(e, r, c)}
+              onClick={() => handleCellClick(r, c)}
+            >
+              {/* 命中/未命中标记 */}
+              {!isPlayer && opMatrix[r][c] === 2 && (
+                <img
+                  src="/hit.png"
+                  alt="hit"
+                  style={{
+                    width: gridSize,
+                    height: gridSize,
+                    pointerEvents: "none",
+                  }}
+                />
+              )}
+              {!isPlayer && opMatrix[r][c] === 3 && (
+                <img
+                  src="/no_hit.png"
+                  alt="miss"
+                  style={{
+                    width: gridSize,
+                    height: gridSize,
+                    pointerEvents: "none",
+                  }}
+                />
+              )}
+            </div>
+          );
+        })
+      )}
 
-        {gameStatus === "finished" && "遊戲結束"}
-      </div>
-
-      {/* 棋盤容器 */}
-      <div
-        className="relative border-2 border-gray-600 rounded-lg p-4 bg-gray-700 shadow-inner"
-        style={{ width: boardSize * gridSize, height: boardSize * gridSize }}
-      >
-        {/* 棋盤格子 */}
-        {Array.from({ length: boardSize }, (_, row) => (
-          <div key={row} className="flex">
-            {Array.from({ length: boardSize }, (_, col) => (
-              <div
-                key={col}
-                className="w-10 h-10 border border-gray-500 absolute hover:bg-gray-600 transition-colors duration-200"
-                style={{
-                  width: gridSize,
-                  height: gridSize,
-                  top: row * gridSize,
-                  left: col * gridSize,
-                }}
-                onDragOver={(e: React.DragEvent) => e.preventDefault()}
-                onDrop={(e: React.DragEvent) => handleDrop(e, row, col)}
-                onClick={() => handleCellClick(row, col)}
-              />
-            ))}
-          </div>
-        ))}
-
-        {/* 船隻 */}
-        {ships.map((ship: Ship) => (
+      {/* 只在 waiting 且 自己棋盘 时显示、可拖拽/旋转的船 */}
+      {isPlayer &&
+        gameStatus === "waiting" &&
+        ships.map((ship: Ship) => (
           <Piece
             key={ship.id}
             ship={ship}
             gridSize={gridSize}
+            draggable={true}
             onRotate={() => rotateShip(ship.id)}
           />
         ))}
-      </div>
-
-      {/* 按鈕組 */}
-      {who === "player" && (
-        <div className="flex flex-col gap-4 mt-4">
-        <div className="flex gap-4">
-          <button
-            onClick={()=>{showShips(ships).forEach(element => {
-              console.log(element);
-            });
-          console.log(ships)}}
-            className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow-md transition-colors duration-200"
-          >
-            與其他玩家對戰
-          </button>
-        </div>
-        
-        <div className="flex gap-4">
-          <button
-            onClick={() => startAIGame()}
-            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md transition-colors duration-200"
-          >
-            與AI對戰
-          </button>
-        </div>
-      </div>
-      )}
     </div>
   );
 };

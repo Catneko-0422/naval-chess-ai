@@ -2,11 +2,13 @@ import uuid
 import json
 import sqlite3
 from datetime import datetime
-from flask import Flask, request
+from flask_cors import CORS
+from flask import Flask, jsonify, request
 from flask_socketio import SocketIO, emit, send, join_room
 import time
 
 app = Flask(__name__)
+CORS(app) 
 app.config['SECRET_KEY'] = 'naval-chess'
 socketio = SocketIO(app, cors_allowed_origins="*")
 
@@ -119,17 +121,17 @@ def handle_make_move(data):
     x, y = data.get('x'), data.get('y')
 
     if not all([room_id, player]) or x is None or y is None:
-        emit('error', {'message': '缺少參數喵'})
+        emit('error', {'message': '缺少參數'})
         return
 
     while True:
         room = db.execute("SELECT * FROM game WHERE room_id = ?", (room_id,)).fetchone()
         if not room:
-            emit('error', {'message': '找不到房間喵'})
+            emit('error', {'message': '找不到房間'})
             return
 
         if room['current_turn'] != player:
-            emit('error', {'message': '還沒輪到你喵'})
+            emit('error', {'message': '還沒輪到你'})
             return
 
         opponent_board_key = 'player2_board' if player == room['player1_id'] else 'player1_board'
@@ -221,6 +223,11 @@ def ai_auto_play(room_id):
         if not keep_shooting:
             break
 
+@app.route('/api/generate_board', methods=['GET'])
+def generate_board_api():
+    from ai.battleship_board import generate_board
+    return jsonify(generate_board())
+
 @app.route('/api/sunken_ships', methods=['POST'])
 def get_sunken_ships():
     data = request.get_json()
@@ -228,11 +235,11 @@ def get_sunken_ships():
     player = data.get("player")
 
     if not room_id or player not in ["player1", "player2"]:
-        return {"error": "缺少參數喵"}, 400
+        return {"error": "缺少參數"}, 400
 
     room = db.execute("SELECT * FROM game WHERE room_id = ?", (room_id,)).fetchone()
     if not room:
-        return {"error": "找不到房間喵"}, 404
+        return {"error": "找不到房間"}, 404
 
     board_key = f"{player}_board"
     try:
@@ -244,7 +251,7 @@ def get_sunken_ships():
             "sunken_count": len(sunk),
         }
     except Exception as e:
-        return {"error": f"解析失敗喵：{str(e)}"}, 500
+        return {"error": f"解析失敗：{str(e)}"}, 500
 
 def check_sunken_ships(board_data):
     board = board_data["board"]

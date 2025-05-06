@@ -1,31 +1,48 @@
+"use client";
+
+import React from "react";
 import { Ship } from "../store/gameStore";
 
 interface PieceProps {
   ship: Ship;
-  onRotate: () => void;
   gridSize: number;
+  draggable: boolean;
+  onRotate: () => void;
 }
 
-const Piece: React.FC<PieceProps> = ({ ship, onRotate, gridSize }) => {
+const Piece: React.FC<PieceProps> = ({ ship, gridSize, draggable, onRotate }) => {
+  // 判断特殊 size=3 第二艘用不同 imageId
+  const isSpecial = ship.imageId !== undefined && ship.imageId !== ship.size;
+  const imageUrl = isSpecial
+    ? `/ships/ship-${ship.size}-${ship.orientation === "horizontal" ? "h" : "v"}-${ship.imageId}.png`
+    : `/ships/ship-${ship.size}-${ship.orientation === "horizontal" ? "h" : "v"}.png`;
+
+  const w = ship.orientation === "horizontal" ? ship.size * gridSize : gridSize;
+  const h = ship.orientation === "horizontal" ? gridSize : ship.size * gridSize;
+
   return (
     <div
-      className="absolute bg-sky-500 text-white font-bold flex items-center justify-center cursor-pointer"
+      className="absolute"
       style={{
-        width:
-          ship.orientation === "horizontal" ? `${ship.size * gridSize}px` : `${gridSize}px`,
-        height:
-          ship.orientation === "horizontal" ? `${gridSize}px` : `${ship.size * gridSize}px`,
-        top: `${ship.row * gridSize}px`,
-        left: `${ship.col * gridSize}px`,
+        top: ship.row * gridSize,
+        left: ship.col * gridSize,
+        width: w,
+        height: h,
+        backgroundImage: `url(${imageUrl})`,
+        backgroundSize: "contain",
+        backgroundRepeat: "no-repeat",
+        cursor: draggable ? "pointer" : "default",
+        zIndex: 10,
       }}
-      draggable
-      onClick={onRotate}
+      draggable={draggable}
       onDragStart={(e) => {
-        e.dataTransfer.setData("shipId", ship.id.toString());
+        if (draggable) e.dataTransfer.setData("shipId", ship.id.toString());
+        else e.preventDefault();
       }}
-    >
-      🚢 {ship.size} 格船
-    </div>
+      onClick={() => {
+        if (draggable) onRotate();
+      }}
+    />
   );
 };
 

@@ -1,0 +1,623 @@
+我目前的專案是naval-chess-ai裡面有兩個目錄一個是backend(app.py所在的目錄)另一個就是frontend(nextjs的主專案資料夾)目前裡面寫了
+#frontend/src/app/page.tsx
+"use client";
+
+import { useState, useEffect } from "react";
+import Board from "../components/Board";
+import useGameStore from "../store/gameStore";
+import { v4 as uuidv4 } from "uuid";
+
+export default function Home() {
+  const [playerIdInput, setPlayerIdInput] = useState("");
+  const { gameStatus, ships, showShips, setPlayerId, joinGame } = useGameStore();
+
+  const handleJoinGame = () => {
+    const idToUse = playerIdInput.trim() || uuidv4();
+    setPlayerId(idToUse);
+    joinGame();
+  };
+
+  const renderedBoard = gameStatus === "playing" ? "opponent" : "player";
+
+  return (
+    <main className="flex min-h-screen flex-col lg:flex-row items-start justify-center gap-8 p-6 bg-[url('/bg.jpg')] bg-cover">
+      <div className="w-full lg:w-[60%] flex justify-center">
+        <Board who={renderedBoard} />
+      </div>
+
+      <div className="w-full lg:w-[30%] flex flex-col items-center gap-4 mt-6 lg:mt-0 text-white">
+        <h2 className="text-2xl font-bold">戰鬥控制區</h2>
+
+        <input
+          type="text"
+          className="w-full py-2 px-4 text-black rounded"
+          placeholder="輸入 Player ID（可留空）"
+          value={playerIdInput}
+          onChange={(e) => setPlayerIdInput(e.target.value)}
+          disabled={gameStatus !== "waiting"}
+        />
+
+        <button
+          onClick={handleJoinGame}
+          className="w-full py-2 bg-green-600 hover:bg-green-700 rounded shadow disabled:opacity-50"
+          disabled={gameStatus !== "waiting"}
+        >
+          與其他玩家對戰
+        </button>
+
+        <button
+          onClick={() => {
+            const socket = useGameStore.getState().socket;
+            if (socket) socket.emit("start_ai_game");
+          }}
+          className="w-full py-2 bg-blue-600 hover:bg-blue-700 rounded shadow disabled:opacity-50"
+          disabled={gameStatus !== "waiting"}
+        >
+          與 AI 對戰
+        </button>
+
+        <button
+          onClick={() => window.location.reload()}
+          className="w-full py-2 bg-gray-600 hover:bg-gray-700 rounded shadow disabled:opacity-50"
+          disabled={gameStatus !== "waiting"}
+        >
+          🔄 重新整理
+        </button>
+
+        {gameStatus === "playing" && (
+          <div className="mt-6 w-full text-sm text-white">
+            <p className="mb-2 text-center font-semibold">我方佈局</p>
+            <div className="grid grid-cols-10 gap-[1px] w-full border border-white bg-gray-800">
+              {showShips(ships).map((row, rowIndex) =>
+                row.map((cell, colIndex) => (
+                  <div
+                    key={`${rowIndex}-${colIndex}`}
+                    className={`aspect-square w-full ${cell ? "bg-gray-400" : "bg-transparent"}`}
+                  ></div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        <p className="text-sm opacity-80 mt-6">目前版本：v1.0</p>
+      </div>
+    </main>
+  );
+}
+
+#frontend/src/components/Board.tsx
+"use client";
+
+import React, { useEffect, useRef } from "react";
+import Piece from "./Piece";
+import useGameStore from "../store/gameStore";
+import { Ship } from "../store/gameStore";
+
+interface BoardProps {
+  who: string;
+}
+
+const Board = ({ who }: BoardProps) => {
+  const boardSize = 10;
+  const isPlayer = who === "player";
+
+  const gridSize = isPlayer
+    ? Math.min(window.innerWidth * 0.8, 800) / boardSize
+    : 30; // 對手棋盤小一點就好喵～
+  const {
+    ships,
+    gameStatus,
+    currentTurn,
+    initializeShips,
+    showShips,
+    moveShip,
+    rotateShip,
+    connectToServer,
+    makeMove,
+  } = useGameStore();
+
+  const hasInitialized = useRef(false);
+
+  useEffect(() => {
+    if (!hasInitialized.current) {
+      initializeShips();
+      connectToServer();
+      hasInitialized.current = true;
+    }
+  }, []);
+
+  const handleDrop = (e: React.DragEvent, row: number, col: number) => {
+    e.preventDefault();
+    const shipId = e.dataTransfer.getData("shipId");
+    moveShip(parseInt(shipId, 10), row, col);
+  };
+
+  const handleCellClick = (row: number, col: number) => {
+    if (
+      gameStatus === "playing" &&
+      currentTurn === useGameStore.getState().socket?.id
+    ) {
+      makeMove({ row, col });
+    }
+  };
+
+  const startAIGame = () => {
+    const socket = useGameStore.getState().socket;
+    if (socket) {
+      socket.emit("start_ai_game");
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-center">
+      {/* 棋盤容器 */}
+      <div
+        className="relative border-2 border-gray-600 rounded-lg p-4 bg-gray-700 shadow-inner"
+        style={{ width: boardSize * gridSize, height: boardSize * gridSize }}
+      >
+        {/* 棋盤格子 */}
+        {Array.from({ length: boardSize }, (_, row) => (
+          <div key={row} className="flex">
+            {Array.from({ length: boardSize }, (_, col) => (
+              <div
+                key={col}
+                className="w-10 h-10 border border-gray-500 absolute hover:bg-gray-600 transition-colors duration-200"
+                style={{
+                  width: gridSize,
+                  height: gridSize,
+                  top: row * gridSize,
+                  left: col * gridSize,
+                }}
+                onDragOver={(e: React.DragEvent) => e.preventDefault()}
+                onDrop={(e: React.DragEvent) => handleDrop(e, row, col)}
+                onClick={() => handleCellClick(row, col)}
+              />
+            ))}
+          </div>
+        ))}
+
+        {/* 船隻 */}
+        {ships.map((ship: Ship) => (
+          <Piece
+            key={ship.id}
+            ship={ship}
+            gridSize={gridSize}
+            onRotate={() => rotateShip(ship.id)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+export default Board;
+
+
+#frontend/src/components/GameBoard.tsx
+import React, { useEffect } from "react";
+import useGameStore from "../store/gameStore";
+
+interface CellProps {
+  row: number;
+  col: number;
+  hasShip: boolean;
+  onClick: (row: number, col: number) => void;
+}
+
+const Cell: React.FC<CellProps> = ({ row, col, hasShip, onClick }) => (
+  <div
+    className={`board-cell ${hasShip ? "ship" : ""}`}
+    onClick={() => onClick(row, col)}
+  />
+);
+
+const GameBoard: React.FC = () => {
+  const {
+    ships,
+    gameStatus,
+    currentTurn,
+    isLocalMultiplayer,
+    localPlayerId,
+    initializeShips,
+    showShips,
+    connectToServer,
+    joinGame,
+    makeMove,
+    startLocalMultiplayer,
+    makeLocalMove
+  } = useGameStore();
+
+  useEffect(() => {
+    initializeShips();
+  }, [initializeShips]);
+
+  const handleCellClick = (row: number, col: number) => {
+    if (gameStatus === "playing") {
+      if (isLocalMultiplayer) {
+        makeLocalMove({ row, col });
+      } else {
+        makeMove({ row, col });
+      }
+    }
+  };
+
+  const handleStartGame = () => {
+    if (isLocalMultiplayer) {
+      startLocalMultiplayer();
+    } else {
+      connectToServer();
+      joinGame();
+    }
+  };
+
+  return (
+    <div className="game-board">
+      <div className="board-grid">
+        {showShips(ships).map((row: number[], rowIndex: number) => (
+          <div key={rowIndex} className="board-row">
+            {row.map((cell: number, colIndex: number) => (
+              <Cell
+                key={`${rowIndex}-${colIndex}`}
+                row={rowIndex}
+                col={colIndex}
+                hasShip={cell === 1}
+                onClick={handleCellClick}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+      <div className="game-controls">
+        <button onClick={handleStartGame}>
+          {isLocalMultiplayer ? "開始本地對戰" : "開始在線對戰"}
+        </button>
+        <button onClick={() => initializeShips()}>重新排列船隻</button>
+      </div>
+      <div className="game-status">
+        {gameStatus === "waiting" && "等待對手..."}
+        {gameStatus === "playing" && (
+          <div>
+            {isLocalMultiplayer
+              ? `當前回合: ${currentTurn === localPlayerId ? "玩家1" : "玩家2"}`
+              : `當前回合: ${currentTurn === "player1" ? "玩家1" : "玩家2"}`}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default GameBoard; 
+
+#frontend/src/components/Piece.tsx
+import { Ship } from "../store/gameStore";
+
+interface PieceProps {
+  ship: Ship;
+  onRotate: () => void;
+  gridSize: number;
+}
+
+const Piece: React.FC<PieceProps> = ({ ship, onRotate, gridSize }) => {
+  const isSpecial = ship.size === 3 && ship.id === 2;
+  const imageUrl = isSpecial
+    ? `/ships/ship-3-${ship.orientation === "horizontal" ? "h" : "v"}-2.png`
+    : `/ships/ship-${ship.size}-${ship.orientation === "horizontal" ? "h" : "v"}.png`;
+
+  const style: React.CSSProperties = {
+    position: "absolute",
+    width: ship.orientation === "horizontal" ? `${ship.size * gridSize}px` : `${gridSize}px`,
+    height: ship.orientation === "horizontal" ? `${gridSize}px` : `${ship.size * gridSize}px`,
+    top: `${ship.row * gridSize}px`,
+    left: `${ship.col * gridSize}px`,
+    backgroundImage: `url(${imageUrl})`,
+    backgroundSize: "contain",
+    backgroundRepeat: "no-repeat",
+    backgroundPosition: "center",
+    cursor: "pointer",
+    zIndex: 10,
+  };
+
+  return (
+    <div
+      style={style}
+      draggable
+      onClick={onRotate}
+      onDragStart={(e) => {
+        e.dataTransfer.setData("shipId", ship.id.toString());
+      }}
+    />
+  );
+};
+
+export default Piece;
+
+
+#frontend/src/store/gameStore.ts
+import { create } from "zustand";
+import { io, Socket } from "socket.io-client";
+
+export interface Ship {
+  id: number;
+  size: number;
+  row: number;
+  col: number;
+  orientation: "horizontal" | "vertical";
+  imageId?: number; 
+}
+
+
+interface GameState {
+  ships: Ship[];
+  socket: Socket | null;
+  gameStatus: "waiting" | "playing" | "finished";
+  currentTurn: string | null;
+  opponentId: string | null;
+  roomId: string | null;
+  playerId: string | null; // ✅ 加這個
+  setPlayerId: (id: string) => void; // ✅ 加這個
+  initializeShips: () => void;
+  moveShip: (id: number, row: number, col: number) => void;
+  rotateShip: (id: number) => void;
+  showShips: (ships: Ship[]) => number[][];
+  connectToServer: () => void;
+  joinGame: () => void;
+  makeMove: (x: number, y: number) => void;
+}
+const useGameStore = create<GameState>((set, get) => ({
+  ships: [],
+  socket: null,
+  gameStatus: "waiting",
+  currentTurn: null,
+  opponentId: null,
+  roomId: null,
+  playerId: null,
+  setPlayerId: (id: string) => set({ playerId: id }),
+
+  initializeShips: async () => {
+    const res = await fetch(process.env.NEXT_PUBLIC_API_URL + "/api/generate_board");
+    const data = await res.json();
+  
+    const shipsWithImage = data.ships.map((ship: Ship) => ({
+      ...ship,
+      imageId: ship.id === 2 ? 3 : ship.id === 3 ? 4 : ship.size,
+    }));
+  
+    set({ ships: shipsWithImage });
+  },
+
+  connectToServer: () => {
+    const socket = io(process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000", {
+      path: "/socket.io",
+      transports: ["websocket"]
+    });
+
+    socket.on("connect", () => {
+      console.log("Connected");
+      set({ socket });
+    });
+
+    socket.on("match_success", ({ room_id, player }) => {
+      console.log("🎉 配對成功", room_id);
+      set({ roomId: room_id });
+    });
+
+    socket.on("game_started", ({ first_turn }) => {
+      console.log("🎮 遊戲開始！先手：", first_turn);
+      set({ gameStatus: "playing", currentTurn: first_turn });
+    });
+
+    socket.on("move_made", ({ attacker, x, y, hit }) => {
+      const nextTurn = attacker === get().currentTurn ? (attacker === "player1" ? "player2" : "player1") : attacker;
+      set({ currentTurn: nextTurn });
+    });
+
+    socket.on("game_over", ({ winner }) => {
+      console.log("🏁 遊戲結束，勝利者是：", winner);
+      set({ gameStatus: "finished" });
+    });
+  },
+
+  joinGame: () => {
+    const { socket, ships, playerId } = get();
+    if (!socket || !playerId) return;
+
+    const board = Array.from({ length: 10 }, () => Array(10).fill(0));
+    for (const ship of ships) {
+      for (let i = 0; i < ship.size; i++) {
+        const r = ship.orientation === "vertical" ? ship.row + i : ship.row;
+        const c = ship.orientation === "horizontal" ? ship.col + i : ship.col;
+        board[r][c] = 1;
+      }
+    }
+
+    socket.emit("join_game", {
+      player_id: playerId,
+      board,
+      ships,
+      is_ai_game: false
+    });
+  },
+
+  makeMove: (x, y) => {
+    const { socket, roomId, currentTurn } = get();
+    if (!socket || !roomId || currentTurn !== socket.id) return;
+    socket.emit("make_move", {
+      room_id: roomId,
+      player: socket.id,
+      x,
+      y
+    });
+  },
+
+  moveShip: (id, row, col) => {
+    set((state) => {
+      const boardSize = 10;
+      const shipToMove = state.ships.find((s) => s.id === id);
+      if (!shipToMove) return state;
+  
+      const isOverflow = (r: number, c: number) => {
+        return shipToMove.orientation === "horizontal"
+          ? c + shipToMove.size > boardSize
+          : r + shipToMove.size > boardSize;
+      };
+  
+      const isOverlapping = (r: number, c: number) => {
+        for (let i = 0; i < shipToMove.size; i++) {
+          const sr = shipToMove.orientation === "vertical" ? r + i : r;
+          const sc = shipToMove.orientation === "horizontal" ? c + i : c;
+  
+          if (
+            state.ships.some(
+              (s) =>
+                s.id !== id &&
+                Array.from({ length: s.size }).some((_, j) => {
+                  const or = s.orientation === "vertical" ? s.row + j : s.row;
+                  const oc = s.orientation === "horizontal" ? s.col + j : s.col;
+                  return sr === or && sc === oc;
+                })
+            )
+          ) {
+            return true;
+          }
+        }
+        return false;
+      };
+  
+      // 嘗試原本位置移動
+      if (!isOverflow(row, col) && !isOverlapping(row, col)) {
+        return {
+          ships: state.ships.map((s) =>
+            s.id === id ? { ...s, row, col } : s
+          )
+        };
+      }
+  
+      // 搜尋合法新位置
+      for (let r = 0; r < boardSize; r++) {
+        for (let c = 0; c < boardSize; c++) {
+          if (!isOverflow(r, c) && !isOverlapping(r, c)) {
+            return {
+              ships: state.ships.map((s) =>
+                s.id === id ? { ...s, row: r, col: c } : s
+              )
+            };
+          }
+        }
+      }
+  
+      // 找不到合法位置就不動
+      return state;
+    });
+  },
+
+  rotateShip: (id) => {
+    set((state) => {
+      const boardSize = 10;
+      const shipToRotate = state.ships.find((s) => s.id === id);
+      if (!shipToRotate) return state;
+  
+      const newOrientation: "horizontal" | "vertical" =
+        shipToRotate.orientation === "horizontal" ? "vertical" : "horizontal";
+  
+      const isOverflow = (row: number, col: number) => {
+        return newOrientation === "horizontal"
+          ? col + shipToRotate.size > boardSize
+          : row + shipToRotate.size > boardSize;
+      };
+  
+      const isOverlapping = (row: number, col: number) => {
+        for (let i = 0; i < shipToRotate.size; i++) {
+          const r = newOrientation === "vertical" ? row + i : row;
+          const c = newOrientation === "horizontal" ? col + i : col;
+  
+          if (
+            state.ships.some(
+              (s) =>
+                s.id !== id &&
+                Array.from({ length: s.size }).some((_, j) => {
+                  const sr = s.orientation === "vertical" ? s.row + j : s.row;
+                  const sc = s.orientation === "horizontal" ? s.col + j : s.col;
+                  return sr === r && sc === c;
+                })
+            )
+          ) {
+            return true;
+          }
+        }
+        return false;
+      };
+  
+      // 嘗試保留原位旋轉
+      if (!isOverflow(shipToRotate.row, shipToRotate.col) &&
+          !isOverlapping(shipToRotate.row, shipToRotate.col)) {
+        return {
+          ships: state.ships.map((s) =>
+            s.id === id
+              ? { ...s, orientation: newOrientation }
+              : s
+          )
+        };
+      }
+  
+      // 嘗試尋找新位置
+      for (let r = 0; r < boardSize; r++) {
+        for (let c = 0; c < boardSize; c++) {
+          if (!isOverflow(r, c) && !isOverlapping(r, c)) {
+            return {
+              ships: state.ships.map((s) =>
+                s.id === id
+                  ? { ...s, orientation: newOrientation, row: r, col: c }
+                  : s
+              )
+            };
+          }
+        }
+      }
+  
+      // 找不到就不旋轉
+      return state;
+    });
+  },
+
+  showShips: (ships) => {
+    const board = Array.from({ length: 10 }, () => Array(10).fill(0));
+    for (const ship of ships) {
+      for (let i = 0; i < ship.size; i++) {
+        const r = ship.orientation === "vertical" ? ship.row + i : ship.row;
+        const c = ship.orientation === "horizontal" ? ship.col + i : ship.col;
+        board[r][c] = 1;
+      }
+    }
+    return board;
+  }
+}));
+
+export default useGameStore;
+
+
+#frontend/src/types/global.d.ts
+import React from 'react';
+
+declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      [elemName: string]: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+    }
+  }
+}
+
+declare module '*.css' {
+  const content: { [className: string]: string };
+  export default content;
+}
+
+declare module '*.svg' {
+  const content: string;
+  export default content;
+}
+
+interface Window {
+  __REDUX_DEVTOOLS_EXTENSION_COMPOSE__?: <R>(a: R) => R;
+} 

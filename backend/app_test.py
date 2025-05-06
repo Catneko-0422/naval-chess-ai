@@ -59,8 +59,9 @@ def on_move_made(data):
                 if response.ok:
                     result = response.json()
                     new_sunken = set(result["sunken_ship_ids"]) - known_sunken
+                    ship_name = ["海防艦","驅逐艦","巡洋艦","戰艦","航空母艦"]
                     for sid in new_sunken:
-                        print(f"💥 打掉了對方的第 {sid} 號船喵！")
+                        print(f"💥 打掉了對方的{ship_name[sid]} ")
                     known_sunken.update(result["sunken_ship_ids"])
             except Exception as e:
                 print(f"⚠️ 無法查詢擊沉船：{e}")
@@ -100,7 +101,7 @@ def attack_next():
         y = int(input("輸入 Y（行）座標："))
         assert 0 <= x < 10 and 0 <= y < 10
     except (ValueError, AssertionError):
-        print("⚠️ 輸入錯誤喵！請輸入 0~9 的整數～")
+        print("⚠️ 輸入錯誤！請輸入 0~9 的整數～")
         return attack_next()
 
     print(f"🚀 發射！{my_id} 攻擊座標：({x}, {y})")
@@ -113,7 +114,7 @@ def attack_next():
 
 # --- 啟動測試 ---
 
-sio.connect('http://localhost:5000')  # 改成你的伺服器位址喵～
+sio.connect('http://localhost:5000') 
 
 # 加入遊戲（AI 或 PVP 模式）
 sio.emit('join_game', {
@@ -128,12 +129,12 @@ sio.emit('join_game', {
               [0,0,0,0,0,0,0,0,0,0],
               [0,0,0,0,0,0,0,0,0,0],
               [0,0,1,1,1,0,0,0,0,0]],
-    "ships": [{"id":0, "size":2, "row":5, "col":9, "orientation":"horizontal"},
+    "ships": [{"id":0, "size":2, "row":5, "col":9, "orientation":"vertical"},
               {"id":1, "size":3, "row":4, "col":4, "orientation":"vertical"},
               {"id":2, "size":3, "row":9, "col":2, "orientation":"horizontal"},
               {"id":3, "size":4, "row":1, "col":7, "orientation":"vertical"},
               {"id":4, "size":5, "row":2, "col":0, "orientation":"vertical"}],
-    "is_ai_game": False  # 要測 AI 就改 True
+    "is_ai_game": True  # 要測 AI 就改 True
 })
 
 # 等待遊戲結束（用 while 或 sleep 防止程式提前結束）
