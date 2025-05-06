@@ -5,7 +5,7 @@ import time
 sio = socketio.Client()
 
 room_id = None
-my_id = "player2"  # 可改為 "player1"
+my_id = "player1"  # 可改為 "player1"
 opponent_id = None
 my_turn = False
 
@@ -62,17 +62,8 @@ def on_error(msg):
 
 def attack_next():
     global room_id, my_id
-    try:
-        # 輸入座標
-        print(f"\n⚔️ {my_id} 請輸入攻擊座標（0~9）")
-        x = int(input("輸入 X（列）座標："))
-        y = int(input("輸入 Y（行）座標："))
-        assert 0 <= x < 10 and 0 <= y < 10
-    except (ValueError, AssertionError):
-        print("⚠️ 輸入錯誤喵！請輸入 0~9 的整數～")
-        return attack_next()
-
-    print(f"🚀 發射！{my_id} 攻擊座標：({x}, {y})")
+    x, y = 0, 0  # 測試時固定，正式可用隨機
+    print(f"⚔️ {my_id} 攻擊 ({x}, {y})")
     sio.emit('make_move', {
         'room_id': room_id,
         'player': my_id,

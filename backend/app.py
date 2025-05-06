@@ -76,26 +76,85 @@ def handle_join_game(data):
         join_room(room_id)
         emit('joined_game', {'room_id': room_id, 'status': 'waiting'})
         print(f"玩家加入遊戲，創建新房間 UUID：{room_id}")
+        emit('waiting_for_opponent', {'message': '等待對手加入...'}, room=room_id)
 
 @socketio.on('update_board')
-def handle_update_board(msg):
-    pass
+def handle_update_board(data):
+    room_id = data['room_id']
+    room = db.execute("SELECT * FROM game WHERE room_id = ?", (room_id,)).fetchone()
+    if not room:
+        emit('error', {'message': '房間不存在'})
+        return
 
-@socketio.on('make_move')
-def handle_make_move(msg):
-    pass
+    emit('board_update', {
+        'player1': json.loads(room['player1_board']),
+        'player2': json.loads(room['player2_board']),
+        'is_ai_game': room['ai_field']
+    })
 
 @socketio.on('game_started')
-def handle_game_started(msg):
-    pass
+def handle_game_started():
+    import random
+    first_turn = random.choice([room['player1_id'], player_id])
+    db.execute("UPDATE game SET current_turn = ? WHERE room_id = ?", (first_turn, room_id))
+    conn.commit()
 
-@socketio.on('move_made')
-def handle_move_made(msg):
-    pass
+    # 對該房間所有人廣播 game_started 事件
+    socketio.emit('game_started', {'first_turn': first_turn}, room=room_id)
 
-@socketio.on('waiting_for_opponent')
-def handle_waiting_for_opponent(msg):
-    pass
+@socketio.on('make_move')
+def handle_make_move(data):
+    room_id = data.get('room_id')
+    player = data.get('player')
+    x, y = data.get('x'), data.get('y')
+
+    if not all([room_id, player]) or x is None or y is None:
+        emit('error', {'message': '缺少參數喵'})
+        return
+
+    room = db.execute("SELECT * FROM game WHERE room_id = ?", (room_id,)).fetchone()
+    if not room:
+        emit('error', {'message': '找不到房間喵'})
+        return
+
+    if room['current_turn'] != player:
+        emit('error', {'message': '還沒輪到你喵'})
+        return
+
+    # 取得對手棋盤
+    opponent_board_key = 'player2_board' if player == room['player1_id'] else 'player1_board'
+    opponent_board = json.loads(room[opponent_board_key])
+
+    hit = opponent_board[x][y] == 1
+    opponent_board[x][y] = 2 if hit else 3  # 2 = 命中，3 = 失敗
+
+    # 更新對手棋盤 & 換回合
+    db.execute(f"""
+        UPDATE game
+        SET {opponent_board_key} = ?, current_turn = ?
+        WHERE room_id = ?
+    """, (json.dumps(opponent_board), room['player1_id'] if player == room['player2_id'] else room['player2_id'], room_id))
+    conn.commit()
+
+    # 通知雙方 move_made
+    socketio.emit('move_made', {
+        'attacker': player,
+        'x': x,
+        'y': y,
+        'hit': hit
+    }, room=room_id)
+
+    # 若為 AI 對戰，立即觸發 AI 出手
+    if room['ai_field'] and room['player2_id'] == 'ai' and player == room['player1_id']:
+        from ai.evaluate_method import evaluate
+        ai_moves = evaluate(board=json.loads(room['player1_board']))
+        ai_move = ai_moves[0]
+        socketio.emit('make_move', {
+            'room_id': room_id,
+            'player': 'ai',
+            'x': ai_move[0],
+            'y': ai_move[1]
+        })
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=5000)
