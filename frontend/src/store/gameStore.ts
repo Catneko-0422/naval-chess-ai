@@ -19,35 +19,38 @@ interface LastMove {
 }
 
 interface GameState {
-  // 棋盤、Socket、狀態
+  // 棋盤與 Socket
   ships: Ship[];
   socket: Socket | null;
+  // 遊戲狀態
   gameStatus: "waiting" | "playing" | "finished";
   currentTurn: string | null;
-  // Player IDs
+  // 身份辨識
   playerId: string | null;
-  opponentId: string | null;       // 真實的對手 ID（UUID 或 "AI"）
+  opponentId: string | null;        // 真實對手的 player_id (UUID 或 "ai")
   roomId: string | null;
   isAiGame: boolean;
-  // Side
   mySide: "player1" | "player2" | null;
   opponentSide: "player1" | "player2" | null;
-  // 擊沉
+  // 擊沉紀錄
   sunkenShips: number[];
   lastMove: LastMove | null;
   lastSunken: number[];
   // 矩陣
   opMatrix: number[][];
   myMatrix: number[][];
+
   // setter
   setOpMatrixCell: (x: number, y: number, v: number) => void;
   setMyMatrixCell: (x: number, y: number, v: number) => void;
   setPlayerId: (id: string) => void;
-  setMySide: (s: "player1" | "player2") => void;
-  setOpponentSide: (s: "player1" | "player2") => void;
+  setOpponentId: (id: string) => void;
+  setMySide: (side: "player1" | "player2") => void;
+  setOpponentSide: (side: "player1" | "player2") => void;
   setSunkenShips: (ids: number[]) => void;
   setLastMove: (lm: LastMove) => void;
   setLastSunken: (ids: number[]) => void;
+
   // actions
   initializeShips: () => void;
   moveShip: (id: number, row: number, col: number) => void;
@@ -61,6 +64,8 @@ interface GameState {
 const GRID_SIZE = 10;
 const emptyMatrix = () =>
   Array.from({ length: GRID_SIZE }, () => Array(GRID_SIZE).fill(0));
+
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 export default create<GameState>((set, get) => ({
   ships: [],
@@ -81,29 +86,28 @@ export default create<GameState>((set, get) => ({
 
   // ---- setters ----
   setOpMatrixCell: (x, y, v) =>
-    set((state) => {
-      const m = state.opMatrix.map((r) => r.slice());
+    set(state => {
+      const m = state.opMatrix.map(r => r.slice());
       m[x][y] = v;
       return { opMatrix: m };
     }),
   setMyMatrixCell: (x, y, v) =>
-    set((state) => {
-      const m = state.myMatrix.map((r) => r.slice());
+    set(state => {
+      const m = state.myMatrix.map(r => r.slice());
       m[x][y] = v;
       return { myMatrix: m };
     }),
-  setPlayerId: (id) => set({ playerId: id }),
-  setMySide: (s) => set({ mySide: s }),
-  setOpponentSide: (s) => set({ opponentSide: s }),
-  setSunkenShips: (ids) => set({ sunkenShips: ids }),
-  setLastMove: (lm) => set({ lastMove: lm }),
-  setLastSunken: (ids) => set({ lastSunken: ids }),
+  setPlayerId: id => set({ playerId: id }),
+  setOpponentId: id => set({ opponentId: id }),
+  setMySide: side => set({ mySide: side }),
+  setOpponentSide: side => set({ opponentSide: side }),
+  setSunkenShips: ids => set({ sunkenShips: ids }),
+  setLastMove: lm => set({ lastMove: lm }),
+  setLastSunken: ids => set({ lastSunken: ids }),
 
   // ---- 初始化隨機排艦 ----
   initializeShips: async () => {
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/api/generate_board`
-    );
+    const res = await fetch(`${API}/api/generate_board`);
     const data = await res.json();
     const shipsWithImage = data.ships.map((s: Ship) => ({
       ...s,
@@ -112,115 +116,98 @@ export default create<GameState>((set, get) => ({
     set({ ships: shipsWithImage });
   },
 
-  // ---- 拖放排艦邏輯 ----
+  // ---- 拖放排艦 ----
   moveShip: (id, targetRow, targetCol) => {
     const ships = get().ships;
-    const ship = ships.find((s) => s.id === id);
+    const ship = ships.find(s => s.id === id);
     if (!ship) return;
-    const others = ships.filter((s) => s.id !== id);
+    const others = ships.filter(s => s.id !== id);
     const { row, col } = findNearestValidPosition(
-      targetRow,
-      targetCol,
-      ship.orientation,
-      ship.size,
-      others
+      targetRow, targetCol, ship.orientation, ship.size, others
     );
-    set((state) => ({
-      ships: state.ships.map((s) =>
+    set(state => ({
+      ships: state.ships.map(s =>
         s.id === id ? { ...s, row, col } : s
       ),
     }));
   },
-  rotateShip: (id) => {
+  rotateShip: id => {
     const ships = get().ships;
-    const ship = ships.find((s) => s.id === id);
+    const ship = ships.find(s => s.id === id);
     if (!ship) return;
-    const newOri =
-      ship.orientation === "horizontal" ? "vertical" : "horizontal";
-    const others = ships.filter((s) => s.id !== id);
+    const newOri = ship.orientation === "horizontal" ? "vertical" : "horizontal";
+    const others = ships.filter(s => s.id !== id);
     const { row, col } = findNearestValidPosition(
-      ship.row,
-      ship.col,
-      newOri,
-      ship.size,
-      others
+      ship.row, ship.col, newOri, ship.size, others
     );
-    set((state) => ({
-      ships: state.ships.map((s) =>
-        s.id === id
-          ? { ...s, orientation: newOri, row, col }
-          : s
+    set(state => ({
+      ships: state.ships.map(s =>
+        s.id === id ? { ...s, orientation: newOri, row, col } : s
       ),
     }));
   },
-  showShips: (ships) => {
+  showShips: ships => {
     const m = emptyMatrix();
-    ships.forEach((sh) =>
-      Array(sh.size)
-        .fill(0)
-        .forEach((_, i) => {
-          const r =
-            sh.orientation === "vertical" ? sh.row + i : sh.row;
-          const c =
-            sh.orientation === "horizontal" ? sh.col + i : sh.col;
-          m[r][c] = 1;
-        })
+    ships.forEach(sh =>
+      Array(sh.size).fill(0).forEach((_, i) => {
+        const r = sh.orientation === "vertical" ? sh.row + i : sh.row;
+        const c = sh.orientation === "horizontal" ? sh.col + i : sh.col;
+        m[r][c] = 1;
+      })
     );
     return m;
   },
 
   // ---- WebSocket & API ----
   connectToServer: () => {
-    const socket = io(
-      process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000",
-      { transports: ["websocket"] }
-    );
+    const socket = io(API, { transports: ["websocket"] });
     socket.on("connect", () => set({ socket }));
 
-    // 收到 room_id，PVP 時再去查 side
+    // 1) 收到 joined_game：立刻 POST /api/opponent 拿 your_side/opponent_side/opponent_id
     socket.on("joined_game", async ({ room_id }) => {
       set({ roomId: room_id });
+
       if (!get().isAiGame) {
-        // 請後端告訴我自己是 player1 還是 player2
         try {
-          const res = await fetch(
-            `${process.env.NEXT_PUBLIC_API_URL}/api/opponent`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                room_id,
-                player: get().playerId!,
-              }),
-            }
-          );
+          const res = await fetch(`${API}/api/opponent`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              room_id,
+              player: get().playerId!
+            }),
+          });
           if (!res.ok) {
-            console.error("查詢 side 失敗：", await res.text());
+            console.error("查詢 /api/opponent 失敗：", await res.text());
             return;
           }
-          const { your_side, opponent_side } = await res.json();
-          set({ mySide: your_side, opponentSide: opponent_side });
+          const { your_side, opponent_side, opponent_id } = await res.json();
+          set({
+            mySide: your_side,
+            opponentSide: opponent_side,
+            opponentId: opponent_id
+          });
         } catch (e) {
-          console.error("呼叫 /api/opponent 發生錯誤", e);
+          console.error("呼叫 /api/opponent 發生錯誤：", e);
         }
       }
     });
 
-    // 備援：match_success 也同時回我們一組 side
-    socket.on("match_success", ({ room_id }) => {
-      const myId = get().playerId!;
-      const side = myId === "player1" ? "player1" : "player2";
+    // 2) 備援：match_success 也提供你是哪方(player1/player2)
+    socket.on("match_success", ({ room_id, player }) => {
       set({
         roomId: room_id,
-        mySide: side,
-        opponentSide: side === "player1" ? "player2" : "player1",
+        mySide: player,
+        opponentSide: player === "player1" ? "player2" : "player1"
       });
     });
 
+    // 開始遊戲
     socket.on("game_started", ({ first_turn }) =>
       set({ gameStatus: "playing", currentTurn: first_turn })
     );
 
+    // 出招結果
     socket.on("move_made", async ({ attacker, x, y, hit }) => {
       const prev = get().sunkenShips;
       set({ lastSunken: [] });
@@ -233,44 +220,41 @@ export default create<GameState>((set, get) => ({
         get().setMyMatrixCell(x, y, hit ? 2 : 3);
       }
 
-      // 換回合 or 繼續打
+      // 換回合或再打
       const nextTurn = hit
         ? attacker
         : attacker === get().playerId
-        ? get().opponentId!
-        : get().playerId!;
+          ? get().opponentId!
+          : get().playerId!;
       set({ currentTurn: nextTurn });
 
-      // 命中就查沉艦
-      const { roomId, opponentSide, mySide } = get();
-      if (hit && roomId && opponentSide && mySide) {
-        // 決定要查哪一方的船
+      // 命中則 POST /api/sunken_ships 查詢已沉
+      if (hit && get().roomId && get().opponentSide) {
         const targetSide =
-          attacker === get().playerId ? opponentSide : mySide;
+          attacker === get().playerId
+            ? get().opponentSide!
+            : get().mySide!;
         try {
-          const res = await fetch(
-            `${process.env.NEXT_PUBLIC_API_URL}/api/sunken_ships`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                room_id: roomId,
-                player: targetSide,
-              }),
-            }
-          );
+          const res = await fetch(`${API}/api/sunken_ships`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              room_id: get().roomId,
+              player: targetSide
+            }),
+          });
           if (res.ok) {
             const { sunken_ship_ids } = await res.json();
-            const newIds = sunken_ship_ids.filter((i) => !prev.includes(i));
+            const newIds = sunken_ship_ids.filter((i: number) => !prev.includes(i));
             set({
               sunkenShips: sunken_ship_ids,
-              lastSunken: newIds,
+              lastSunken: newIds
             });
           } else {
-            console.error("Bad /api/sunken_ships:", await res.text());
+            console.error("Bad /api/sunken_ships：", await res.text());
           }
         } catch (e) {
-          console.error("沉艦查詢失敗", e);
+          console.error("沉艦查詢失敗：", e);
         }
       }
     });
@@ -278,46 +262,45 @@ export default create<GameState>((set, get) => ({
     socket.on("game_over", () => set({ gameStatus: "finished" }));
   },
 
-  // 加入遊戲（PVP / PVE）
+  // 加入遊戲 (PVP / PVE)
   joinGame: (isAi = false) => {
     const { socket, ships, playerId } = get();
     if (!socket || !playerId) return;
 
-    // AI 場預設
     set({ isAiGame: isAi });
     if (isAi) {
       set({
         opponentId: "AI",
         mySide: "player1",
-        opponentSide: "player2",
+        opponentSide: "player2"
       });
     } else {
-      set({ opponentId: null, mySide: null, opponentSide: null });
+      set({
+        opponentId: null,
+        mySide: null,
+        opponentSide: null
+      });
     }
 
     // 傳送布陣
     const board = emptyMatrix();
-    ships.forEach((ship) =>
-      Array(ship.size)
-        .fill(0)
-        .forEach((_, i) => {
-          const r = ship.orientation === "vertical"
-            ? ship.row + i
-            : ship.row;
-          const c = ship.orientation === "horizontal"
-            ? ship.col + i
-            : ship.col;
-          board[r][c] = 1;
-        })
+    ships.forEach(ship =>
+      Array(ship.size).fill(0).forEach((_, i) => {
+        const r = ship.orientation === "vertical" ? ship.row + i : ship.row;
+        const c = ship.orientation === "horizontal" ? ship.col + i : ship.col;
+        board[r][c] = 1;
+      })
     );
+
     socket.emit("join_game", {
       player_id: playerId,
       board,
       ships,
-      is_ai_game: isAi,
+      is_ai_game: isAi
     });
   },
 
+  // 發動攻擊
   makeMove: (x, y) => {
     const { socket, roomId, playerId, currentTurn } = get();
     if (!socket || !roomId || currentTurn !== playerId) return;
@@ -325,7 +308,7 @@ export default create<GameState>((set, get) => ({
   },
 }));
 
-// 幫助：找最近合法位置
+// 輔助：找到最近合法放置位置
 function findNearestValidPosition(
   targetRow: number,
   targetCol: number,
@@ -352,17 +335,13 @@ function findNearestValidPosition(
         if (orientation === "horizontal" && c + size > max) continue;
         const coords = Array.from({ length: size }, (_, i) => ({
           r: orientation === "vertical" ? r + i : r,
-          c: orientation === "horizontal" ? c + i : c,
+          c: orientation === "horizontal" ? c + i : c
         }));
-        const overlap = otherShips.some((os) =>
-          coords.some((pt) =>
+        const overlap = otherShips.some(os =>
+          coords.some(pt =>
             os.orientation === "vertical"
-              ? pt.c === os.col &&
-                pt.r >= os.row &&
-                pt.r < os.row + os.size
-              : pt.r === os.row &&
-                pt.c >= os.col &&
-                pt.c < os.col + os.size
+              ? pt.c === os.col && pt.r >= os.row && pt.r < os.row + os.size
+              : pt.r === os.row && pt.c >= os.col && pt.c < os.col + os.size
           )
         );
         if (!overlap) return { row: r, col: c };
