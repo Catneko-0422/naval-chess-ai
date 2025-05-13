@@ -90,6 +90,27 @@
 
 ## 🧩 REST API
 
+### `POST /api/opponent`
+
+查詢對手 ID。
+
+- **請求 Body**：
+
+```json
+{
+  "room_id": "xxx",
+  "player": "player1" // 查詢該玩家的船艦
+}
+```
+
+- **回應**：
+
+```json
+{
+  "opponent_id": "player2"
+}
+```
+
 ### `POST /api/sunken_ships`
 
 查詢擊沉的艦艇 ID。

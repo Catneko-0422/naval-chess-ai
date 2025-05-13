@@ -691,50 +691,49 @@ export default create<GameState>((set, get) => ({
     );
 
     socket.on("move_made", async ({ attacker, x, y, hit }) => {
-      const prev = get().sunkenShips;
-      const { playerId, opponentId, roomId } = get();
 
-      // 清空上一回合的沉艦訊息
-      set({ lastSunken: [] });
-
-      // 更新最後一次攻擊
-      set({ lastMove: { attacker, x, y, hit } });
-
-      // 更新命中／未命中矩陣
+      const prevSunken = get().sunkenShips
+      const { playerId, opponentId, roomId } = get()
+    
+      set({ lastSunken: [] })
+    
+      set({ lastMove: { attacker, x, y, hit } })
       if (attacker === playerId) {
-        get().setOpMatrixCell(x, y, hit ? 2 : 3);
+        get().setOpMatrixCell(x, y, hit ? 2 : 3)
       } else {
-        get().setMyMatrixCell(x, y, hit ? 2 : 3);
+        get().setMyMatrixCell(x, y, hit ? 2 : 3)
       }
-
-      // 回合邏輯：命中繼續打，否則換人
+    
       const nextTurn = hit
         ? attacker
-        : (attacker === playerId ? opponentId! : playerId!);
-      set({ currentTurn: nextTurn });
+        : (attacker === playerId ? opponentId! : playerId!)
+      set({ currentTurn: nextTurn })
 
-      // 如果命中，就去後端查詢沉艦
+      console.log(hit, roomId, opponentId)
       if (hit && roomId && opponentId) {
+        const payload = { room_id: roomId, player: attacker === playerId ? opponentId : playerId }
+        console.log('查询沉舰 payload:', payload)
         try {
-          const res = await fetch(
-            `${process.env.NEXT_PUBLIC_API_URL}/api/sunken_ships`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                room_id: roomId,
-                player: attacker === playerId ? opponentId : playerId
-              })
-            }
-          );
-          if (res.ok) {
-            console.log(res);
-            const { sunken_ship_ids } = await res.json();
-            const newIds = sunken_ship_ids.filter(id => !prev.includes(id));
-            set({ sunkenShips: sunken_ship_ids, lastSunken: newIds });
+          const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/sunken_ships`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          })
+          if (!res.ok) {
+            // 打印后端返回的错误详情
+            const text = await res.text()
+            console.error(`🛑 /api/sunken_ships 错误 ${res.status}:`, text)
+            return
           }
-        } catch (e) {
-          console.error("查詢擊沉失敗", e);
+          const { sunken_ship_ids } = await res.json()
+          console.log("🔍 后端返回所有已沉舰:", sunken_ship_ids)
+
+          const newIds = sunken_ship_ids.filter(id => !prevSunken.includes(id))
+          console.log("本回合新沉舰:", newIds)
+
+          set({ sunkenShips: sunken_ship_ids, lastSunken: newIds })
+        } catch (err) {
+          console.error("查询沉舰失败:", err)
         }
       }
     });

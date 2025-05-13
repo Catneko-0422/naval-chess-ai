@@ -223,6 +223,27 @@ def ai_auto_play(room_id):
         if not keep_shooting:
             break
 
+@app.route('/api/opponent', methods=['GET'])
+def get_opponent():
+    room_id   = request.args.get('room_id')
+    player    = request.args.get('player')  # "player1" 或 "player2" 或 "ai"
+    if not room_id or not player:
+        return jsonify({"error": "缺少 room_id 或 player"}), 400
+
+    row = db.execute("SELECT player1_id, player2_id FROM game WHERE room_id = ?", (room_id,)).fetchone()
+    if not row:
+        return jsonify({"error": "找不到房間"}), 404
+
+    if player == row["player1_id"]:
+        opponent = row["player2_id"]
+    elif player == row["player2_id"]:
+        opponent = row["player1_id"]
+    else:
+        return jsonify({"error": "player 不在此房間"}), 400
+
+    return jsonify({"opponent_id": opponent}), 200
+
+
 @app.route('/api/generate_board', methods=['GET'])
 def generate_board_api():
     from ai.battleship_board import generate_board
