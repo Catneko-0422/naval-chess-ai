@@ -1,0 +1,814 @@
+#naval-chess-ai/frontend\src\app\page.tsx
+"use client";
+
+import Board from "../components/Board";
+import Sidebar from "../components/Sidebar";
+import StatusPanel from "../components/StatusPanel";
+import useGameStore from "../store/gameStore";
+import { motion } from "framer-motion";
+
+export default function Home() {
+  const { gameStatus } = useGameStore();
+
+  const pageVariants = {
+    hidden: { opacity: 0, y: -20 },
+    visible: { opacity: 1, y: 0, transition: { when: "beforeChildren", staggerChildren: 0.1 } }
+  };
+
+  return (
+    <motion.main
+      className="w-full max-w-screen-xl mx-auto px-6 py-8 flex flex-col"
+      initial="hidden"
+      animate="visible"
+      variants={pageVariants}
+    >
+      <motion.h1
+        className="text-4xl font-extrabold text-center text-white mb-8"
+        variants={{ hidden: { opacity: 0 }, visible: { opacity: 1, transition: { duration: 0.5 } } }}
+      >
+        海戰棋大作戰
+      </motion.h1>
+
+      <div className="flex flex-col md:flex-row gap-8">
+        <Board who={gameStatus === "waiting" ? "player" : "opponent"} />
+        <Sidebar />
+      </div>
+
+      <StatusPanel />
+    </motion.main>
+  );
+}
+
+
+#naval-chess-ai/frontend\src\components\Board.tsx
+// src/components/Board.tsx
+"use client";
+
+import React, { useEffect, useRef, useState } from "react";
+import useGameStore, { Ship } from "../store/gameStore";
+
+interface BoardProps {
+  who: "player" | "opponent";
+}
+
+export default function Board({ who }: BoardProps) {
+  const {
+    playerId,          // ↗️ 拿到我們的 playerId
+    ships,
+    sunkenShips,
+    showShips,
+    initializeShips,
+    connectToServer,
+    gameStatus,
+    currentTurn,
+    socket,            // 其實不再对比 socket.id
+    moveShip,
+    rotateShip,
+    makeMove,
+    opMatrix,
+    myMatrix,
+  } = useGameStore();
+
+  const inited = useRef(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [gridSize, setGridSize] = useState(0);
+
+  useEffect(() => {
+    if (!inited.current) {
+      initializeShips();
+      connectToServer();
+      inited.current = true;
+    }
+    const updateSize = () => {
+      if (containerRef.current) {
+        const usable = containerRef.current.clientWidth - 9;
+        setGridSize(Math.floor(usable / 10));
+      }
+    };
+    updateSize();
+    window.addEventListener("resize", updateSize);
+    return () => window.removeEventListener("resize", updateSize);
+  }, [initializeShips, connectToServer]);
+
+  const isPlayer = who === "player";
+  const matrix = showShips(ships);
+  const hits = isPlayer ? myMatrix : opMatrix;
+
+  return (
+    <div
+      ref={containerRef}
+      className="w-full max-w-screen-lg overflow-x-auto bg-gray-800 p-[1px] rounded-lg"
+    >
+      <div
+        className="relative"
+        style={{ width: gridSize * 10, height: gridSize * 10 }}
+      >
+        <div className="grid grid-cols-10 grid-rows-10 absolute top-0 left-0">
+          {matrix.map((row, r) =>
+            row.map((cell, c) => {
+              const showShip = isPlayer && cell === 1 && !sunkenShips.includes(cell);
+              const hitState = hits[r][c]; // 0=未打, 2=命中,3=未命中
+              const canClick =
+                who === "opponent" &&
+                gameStatus === "playing" &&
+                currentTurn === playerId &&    // ✅ 改用 playerId 判断
+                hitState === 0;
+              return (
+                <div
+                  key={`${r}-${c}`}
+                  className={[
+                    "aspect-square border border-gray-600",
+                    showShip ? "bg-gray-400" : "bg-gray-700",
+                    canClick ? "cursor-pointer" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                  style={{ width: gridSize, height: gridSize }}
+                  onClick={() => canClick && makeMove(r, c)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    if (isPlayer && gameStatus === "waiting") {
+                      const id = e.dataTransfer.getData("shipId");
+                      id && moveShip(Number(id), r, c);
+                    }
+                  }}
+                >
+                  {hitState === 2 && (
+                    <img
+                      src="/hit.png"
+                      alt="hit"
+                      className="w-full h-full pointer-events-none"
+                    />
+                  )}
+                  {hitState === 3 && (
+                    <img
+                      src="/no_hit.png"
+                      alt="miss"
+                      className="w-full h-full pointer-events-none"
+                    />
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* 等待阶段：玩家布舰 */}
+        {isPlayer &&
+          gameStatus === "waiting" &&
+          ships.map((ship: Ship) => {
+            const { id, size, row, col, orientation, imageId } = ship;
+            const isSpecial = imageId !== size;
+            const imageUrl = isSpecial
+              ? `/ships/ship-${size}-${orientation === "horizontal" ? "h" : "v"}-${imageId}.png`
+              : `/ships/ship-${size}-${orientation === "horizontal" ? "h" : "v"}.png`;
+            const w = orientation === "horizontal" ? size * gridSize : gridSize;
+            const h = orientation === "horizontal" ? gridSize : size * gridSize;
+            return (
+              <img
+                key={id}
+                src={imageUrl}
+                alt={`ship-${id}`}
+                draggable
+                onDragStart={(e) => e.dataTransfer.setData("shipId", id.toString())}
+                onClick={() => rotateShip(id)}
+                className="absolute z-10"
+                style={{
+                  top: row * gridSize,
+                  left: col * gridSize,
+                  width: w,
+                  height: h,
+                  cursor: "pointer",
+                }}
+              />
+            );
+          })}
+
+        {/* 已击沉整艘船 */}
+        {sunkenShips.map((sid) => {
+          const ship = ships.find((s) => s.id === sid);
+          if (!ship) return null;
+          const { size, row, col, orientation, imageId } = ship;
+          const isSpecial = imageId !== size;
+          const imageUrl = isSpecial
+            ? `/ships/ship-${size}-${
+                orientation === "horizontal" ? "h" : "v"
+              }-${imageId}.png`
+            : `/ships/ship-${size}-${
+                orientation === "horizontal" ? "h" : "v"
+              }.png`;
+          const w = orientation === "horizontal" ? size * gridSize : gridSize;
+          const h = orientation === "horizontal" ? gridSize : size * gridSize;
+          return (
+            <img
+              key={`sunken-${sid}`}
+              src={imageUrl}
+              alt={`sunken-${sid}`}
+              className="absolute opacity-80 z-20"
+              style={{
+                top: row * gridSize,
+                left: col * gridSize,
+                width: w,
+                height: h,
+              }}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+
+#naval-chess-ai/frontend\src\components\GameBoard.tsx
+import React, { useEffect } from "react";
+import useGameStore from "../store/gameStore";
+
+interface CellProps {
+  row: number;
+  col: number;
+  hasShip: boolean;
+  onClick: (row: number, col: number) => void;
+}
+
+const Cell: React.FC<CellProps> = ({ row, col, hasShip, onClick }) => (
+  <div
+    className={`board-cell ${hasShip ? "ship" : ""}`}
+    onClick={() => onClick(row, col)}
+  />
+);
+
+const GameBoard: React.FC = () => {
+  const {
+    ships,
+    gameStatus,
+    currentTurn,
+    isLocalMultiplayer,
+    localPlayerId,
+    initializeShips,
+    showShips,
+    connectToServer,
+    joinGame,
+    makeMove,
+    startLocalMultiplayer,
+    makeLocalMove
+  } = useGameStore();
+
+  useEffect(() => {
+    initializeShips();
+  }, [initializeShips]);
+
+  const handleCellClick = (row: number, col: number) => {
+    if (gameStatus === "playing") {
+      if (isLocalMultiplayer) {
+        makeLocalMove({ row, col });
+      } else {
+        makeMove({ row, col });
+      }
+    }
+  };
+
+  const handleStartGame = () => {
+    if (isLocalMultiplayer) {
+      startLocalMultiplayer();
+    } else {
+      connectToServer();
+      joinGame();
+    }
+  };
+
+  return (
+    <div className="game-board">
+      <div className="board-grid">
+        {showShips(ships).map((row: number[], rowIndex: number) => (
+          <div key={rowIndex} className="board-row">
+            {row.map((cell: number, colIndex: number) => (
+              <Cell
+                key={`${rowIndex}-${colIndex}`}
+                row={rowIndex}
+                col={colIndex}
+                hasShip={cell === 1}
+                onClick={handleCellClick}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+      <div className="game-controls">
+        <button onClick={handleStartGame}>
+          {isLocalMultiplayer ? "開始本地對戰" : "開始在線對戰"}
+        </button>
+        <button onClick={() => initializeShips()}>重新排列船隻</button>
+      </div>
+      <div className="game-status">
+        {gameStatus === "waiting" && "等待對手..."}
+        {gameStatus === "playing" && (
+          <div>
+            {isLocalMultiplayer
+              ? `當前回合: ${currentTurn === localPlayerId ? "玩家1" : "玩家2"}`
+              : `當前回合: ${currentTurn === "player1" ? "玩家1" : "玩家2"}`}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default GameBoard; 
+
+#naval-chess-ai/frontend\src\components\Piece.tsx
+"use client";
+
+import React from "react";
+import { Ship } from "../store/gameStore";
+
+interface PieceProps {
+  ship: Ship;
+  gridSize: number;
+  draggable: boolean;
+  onRotate: () => void;
+}
+
+const Piece: React.FC<PieceProps> = ({ ship, gridSize, draggable, onRotate }) => {
+  // 判断特殊 size=3 第二艘用不同 imageId
+  const isSpecial = ship.imageId !== undefined && ship.imageId !== ship.size;
+  const imageUrl = isSpecial
+    ? `/ships/ship-${ship.size}-${ship.orientation === "horizontal" ? "h" : "v"}-${ship.imageId}.png`
+    : `/ships/ship-${ship.size}-${ship.orientation === "horizontal" ? "h" : "v"}.png`;
+
+  const w = ship.orientation === "horizontal" ? ship.size * gridSize : gridSize;
+  const h = ship.orientation === "horizontal" ? gridSize : ship.size * gridSize;
+
+  return (
+    <div
+      className="absolute"
+      style={{
+        top: ship.row * gridSize,
+        left: ship.col * gridSize,
+        width: w,
+        height: h,
+        backgroundImage: `url(${imageUrl})`,
+        backgroundSize: "contain",
+        backgroundRepeat: "no-repeat",
+        cursor: draggable ? "pointer" : "default",
+        zIndex: 10,
+      }}
+      draggable={draggable}
+      onDragStart={(e) => {
+        if (draggable) e.dataTransfer.setData("shipId", ship.id.toString());
+        else e.preventDefault();
+      }}
+      onClick={() => {
+        if (draggable) onRotate();
+      }}
+    />
+  );
+};
+
+export default Piece;
+
+
+#naval-chess-ai/frontend\src\components\Sidebar.tsx
+"use client";
+
+import React, { useState } from "react";
+import useGameStore from "../store/gameStore";
+import { motion } from "framer-motion";
+
+export default function Sidebar() {
+  const {
+    gameStatus,
+    ships,
+    showShips,
+    playerId,
+    myMatrix,       // 自己的命中/未命中矩陣
+    setPlayerId,
+    joinGame,
+  } = useGameStore();
+  const [input, setInput] = useState("");
+
+  const handlePvP = () => {
+    const id = input.trim() || crypto.randomUUID();
+    setPlayerId(id);
+    joinGame(false);
+  };
+  const handlePvE = () => {
+    const id = input.trim() || crypto.randomUUID();
+    setPlayerId(id);
+    joinGame(true);
+  };
+
+  return (
+    <motion.div
+      className="w-full md:w-1/3 flex flex-col gap-6"
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+    >
+      <motion.div
+        className="space-y-4"
+        initial="hidden"
+        animate="visible"
+        variants={{ visible: { transition: { staggerChildren: 0.1 } } }}
+      >
+        <motion.input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="輸入 Player ID（可留空）"
+          className="w-full p-3 rounded bg-gray-700 text-white placeholder-gray-400"
+          variants={{ hidden: { opacity: 0 }, visible: { opacity: 1 } }}
+        />
+        <motion.button onClick={handlePvP}
+          disabled={gameStatus !== "waiting"}
+          className="w-full py-3 rounded bg-green-600 hover:bg-green-700 text-white"
+          whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+        >
+          與玩家對戰
+        </motion.button>
+        <motion.button onClick={handlePvE}
+          disabled={gameStatus !== "waiting"}
+          className="w-full py-3 rounded bg-blue-600 hover:bg-blue-700 text-white"
+          whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+        >
+          與 AI 對戰
+        </motion.button>
+        <motion.button onClick={() => window.location.reload()}
+          className="w-full py-3 rounded bg-gray-600 hover:bg-gray-700 text-white"
+          whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+        >
+          🔄 重新整理
+        </motion.button>
+      </motion.div>
+
+      {gameStatus === "playing" && (
+        <div className="w-full grid grid-cols-10 gap-[1px] bg-gray-800">
+          {showShips(ships).map((row, r) =>
+            row.map((cell, c) => {
+              const hasShip = cell === 1;
+              const hitState = myMatrix[r][c]; // 0/2/3
+              return (
+                <div key={`${r}-${c}`}
+                  className="relative aspect-square"
+                >
+                  <div className={`absolute inset-0 ${
+                    hasShip ? "bg-gray-400" : "bg-transparent"
+                  }`} />
+                  {hitState === 2 && (
+                    <img src="/hit.png" alt="hit"
+                      className="absolute inset-0 w-full h-full pointer-events-none" />
+                  )}
+                  {hitState === 3 && (
+                    <img src="/no_hit.png" alt="miss"
+                      className="absolute inset-0 w-full h-full pointer-events-none" />
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+
+      <motion.p className="text-sm text-gray-400 mt-auto text-center"
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+      >
+        版本：v1.0
+      </motion.p>
+    </motion.div>
+  );
+}
+
+
+#naval-chess-ai/frontend\src\components\StatusPanel.tsx
+// src/components/StatusPanel.tsx
+"use client";
+
+import React from "react";
+import useGameStore from "../store/gameStore";
+
+export default function StatusPanel() {
+  const {
+    gameStatus,
+    playerId,
+    currentTurn,
+    lastMove,
+    lastSunken,
+    sunkenShips,
+  } = useGameStore();
+
+  // 遊戲尚未開始就不顯示
+  if (gameStatus === "waiting") return null;
+
+  const isMyTurn = currentTurn === playerId;
+  const turnText = isMyTurn ? "輪到你出招！" : "對手的回合";
+
+  return (
+    <div className="w-full bg-gray-900 text-white p-4 rounded-lg mt-6">
+        {/* 回合狀態 */}
+        <p className="mb-2 font-semibold text-lg">{turnText}</p>
+
+        {/* 最後一次攻擊結果 */}
+        {lastMove && (
+            <p className="mb-2">
+            最後一擊：{lastMove.attacker === playerId ? "你" : "對手"} 在
+            ({lastMove.x},{lastMove.y})，
+            {lastMove.hit ? "命中 ✔️" : "未命中 ❌"}
+            </p>
+        )}
+
+        { lastMove && lastSunken.length > 0 && (
+        <p className="mb-2">
+            💥 {lastMove.attacker === playerId ? "你擊沉了" : "對手擊沉了"}{" "}
+            {lastSunken.map(id =>
+            ["海防艦","驅逐艦","巡洋艦","戰艦","航空母艦"][id]
+            ).join("、")}
+        </p>
+        )}
+
+        {/* 累計已沉艦艇 */}
+        <p>已沉艦艇：{sunkenShips.length} / 5</p>
+    </div>
+  );
+}
+
+
+#naval-chess-ai/frontend\src\store\gameStore.ts
+import { create } from "zustand";
+import { io, Socket } from "socket.io-client";
+
+export interface Ship {
+  id: number;
+  size: number;
+  row: number;
+  col: number;
+  orientation: "horizontal" | "vertical";
+  imageId?: number;
+}
+
+interface LastMove {
+  attacker: string;
+  x: number;
+  y: number;
+  hit: boolean;
+}
+
+interface GameState {
+  ships: Ship[];
+  socket: Socket | null;
+  gameStatus: "waiting" | "playing" | "finished";
+  currentTurn: string | null;
+  opponentId: string | null;
+  roomId: string | null;
+  playerId: string | null;
+  sunkenShips: number[];
+  lastMove: LastMove | null;
+  lastSunken: number[];
+  opMatrix: number[][];
+  myMatrix: number[][];
+  setOpMatrixCell: (x: number, y: number, v: number) => void;
+  setMyMatrixCell: (x: number, y: number, v: number) => void;
+  setPlayerId: (id: string) => void;
+  initializeShips: () => void;
+  moveShip: (id: number, row: number, col: number) => void;
+  rotateShip: (id: number) => void;
+  showShips: (ships: Ship[]) => number[][];
+  connectToServer: () => void;
+  joinGame: (isAi: boolean) => void;
+  makeMove: (x: number, y: number) => void;
+  setLastMove: (lm: LastMove) => void;
+  setLastSunken: (ids: number[]) => void;
+  setSunkenShips: (ids: number[]) => void;
+}
+
+const GRID_SIZE = 10;
+
+const emptyMatrix = () => Array.from({ length: GRID_SIZE }, () => Array(GRID_SIZE).fill(0));
+
+export default create<GameState>((set, get) => ({
+  ships: [],
+  socket: null,
+  gameStatus: "waiting",
+  currentTurn: null,
+  opponentId: null,
+  roomId: null,
+  playerId: null,
+  sunkenShips: [],
+  lastMove: null,
+  lastSunken: [],
+  opMatrix: emptyMatrix(),
+  myMatrix: emptyMatrix(),
+
+  setOpMatrixCell: (x, y, v) =>
+    set(state => {
+      const m = state.opMatrix.map(r => r.slice());
+      m[x][y] = v;
+      return { opMatrix: m };
+    }),
+
+  setMyMatrixCell: (x, y, v) =>
+    set(state => {
+      const m = state.myMatrix.map(r => r.slice());
+      m[x][y] = v;
+      return { myMatrix: m };
+    }),
+
+  setPlayerId: (id) => set({ playerId: id }),
+  setSunkenShips: (ids) => set({ sunkenShips: ids }),
+  setLastMove: (lm) => set({ lastMove: lm }),
+  setLastSunken: (ids) => set({ lastSunken: ids }),
+
+  initializeShips: async () => {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/generate_board`);
+    const data = await res.json();
+    const shipsWithImage = data.ships.map((s: Ship) => ({
+      ...s,
+      imageId: s.size === 3 && s.id === 2 ? 2 : s.size,
+    }));
+    set({ ships: shipsWithImage });
+  },
+
+  moveShip: (id, targetRow, targetCol) => {
+    const ships = get().ships;
+    const ship = ships.find(s => s.id === id);
+    if (!ship) return;
+    const others = ships.filter(s => s.id !== id);
+    const { row, col } = findNearestValidPosition(
+      targetRow, targetCol, ship.orientation, ship.size, others
+    );
+    set(state => ({
+      ships: state.ships.map(s => s.id === id ? { ...s, row, col } : s)
+    }));
+  },
+
+  rotateShip: (id) => {
+    const ships = get().ships;
+    const ship = ships.find(s => s.id === id);
+    if (!ship) return;
+    const newOri = ship.orientation === "horizontal" ? "vertical" : "horizontal";
+    const others = ships.filter(s => s.id !== id);
+    const { row, col } = findNearestValidPosition(
+      ship.row, ship.col, newOri, ship.size, others
+    );
+    set(state => ({
+      ships: state.ships.map(s =>
+        s.id === id ? { ...s, orientation: newOri, row, col } : s
+      )
+    }));
+  },
+
+  showShips: (ships) => {
+    const m = emptyMatrix();
+    ships.forEach(sh =>
+      Array(sh.size).fill(0).forEach((_, i) => {
+        const r = sh.orientation === "vertical" ? sh.row + i : sh.row;
+        const c = sh.orientation === "horizontal" ? sh.col + i : sh.col;
+        m[r][c] = 1;
+      })
+    );
+    return m;
+  },
+
+  connectToServer: () => {
+    const socket = io(process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000", {
+      transports: ["websocket"]
+    });
+
+    socket.on("connect", () => set({ socket }));
+
+    socket.on("joined_game", ({ room_id }) => {
+      set({ roomId: room_id });
+    });
+
+    socket.on("match_success", ({ room_id }) => {
+      const myId = get().playerId!;
+      set({
+        roomId: room_id,
+        opponentId: myId === "player1" ? "player2" : "player1"
+      });
+    });
+
+    socket.on("game_started", ({ first_turn }) =>
+      set({ gameStatus: "playing", currentTurn: first_turn })
+    );
+
+    socket.on("move_made", async ({ attacker, x, y, hit }) => {
+      const prev = get().sunkenShips;
+      const { playerId, opponentId, roomId } = get();
+
+      // 清空上一回合的沉艦訊息
+      set({ lastSunken: [] });
+
+      // 更新最後一次攻擊
+      set({ lastMove: { attacker, x, y, hit } });
+
+      // 更新命中／未命中矩陣
+      if (attacker === playerId) {
+        get().setOpMatrixCell(x, y, hit ? 2 : 3);
+      } else {
+        get().setMyMatrixCell(x, y, hit ? 2 : 3);
+      }
+
+      // 回合邏輯：命中繼續打，否則換人
+      const nextTurn = hit
+        ? attacker
+        : (attacker === playerId ? opponentId! : playerId!);
+      set({ currentTurn: nextTurn });
+
+      // 如果命中，就去後端查詢沉艦
+      if (hit && roomId && opponentId) {
+        try {
+          const res = await fetch(
+            `${process.env.NEXT_PUBLIC_API_URL}/api/sunken_ships`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                room_id: roomId,
+                player: attacker === playerId ? opponentId : playerId
+              })
+            }
+          );
+          if (res.ok) {
+            console.log(res);
+            const { sunken_ship_ids } = await res.json();
+            const newIds = sunken_ship_ids.filter(id => !prev.includes(id));
+            set({ sunkenShips: sunken_ship_ids, lastSunken: newIds });
+          }
+        } catch (e) {
+          console.error("查詢擊沉失敗", e);
+        }
+      }
+    });
+
+    socket.on("game_over", () => set({ gameStatus: "finished" }));
+  },
+
+  joinGame: (isAi = false) => {
+    const { socket, ships, playerId } = get();
+    if (!socket || !playerId) return;
+    const board = emptyMatrix();
+    ships.forEach(ship =>
+      Array(ship.size).fill(0).forEach((_, i) => {
+        const r = ship.orientation === "vertical" ? ship.row + i : ship.row;
+        const c = ship.orientation === "horizontal" ? ship.col + i : ship.col;
+        board[r][c] = 1;
+      })
+    );
+    socket.emit("join_game", {
+      player_id: playerId,
+      board,
+      ships,
+      is_ai_game: isAi
+    });
+  },
+
+  makeMove: (x, y) => {
+    const { socket, roomId, playerId, currentTurn } = get();
+    if (!socket || !roomId || currentTurn !== playerId) return;
+    socket.emit("make_move", { room_id: roomId, player: playerId, x, y });
+  }
+}));
+
+function findNearestValidPosition(
+  targetRow: number,
+  targetCol: number,
+  orientation: "horizontal" | "vertical",
+  size: number,
+  otherShips: Ship[]
+): { row: number; col: number } {
+  const max = GRID_SIZE;
+  const clampRow = Math.min(
+    Math.max(0, targetRow),
+    orientation === "vertical" ? max - size : max - 1
+  );
+  const clampCol = Math.min(
+    Math.max(0, targetCol),
+    orientation === "horizontal" ? max - size : max - 1
+  );
+
+  for (let radius = 0; radius <= 3; radius++) {
+    for (let dr = -radius; dr <= radius; dr++) {
+      for (let dc = -radius; dc <= radius; dc++) {
+        const r = clampRow + dr;
+        const c = clampCol + dc;
+        if (r < 0 || c < 0) continue;
+        if (orientation === "vertical" && r + size > max) continue;
+        if (orientation === "horizontal" && c + size > max) continue;
+        const coords = Array.from({ length: size }, (_, i) => ({
+          r: orientation === "vertical" ? r + i : r,
+          c: orientation === "horizontal" ? c + i : c
+        }));
+        const overlap = otherShips.some(os =>
+          coords.some(pt =>
+            os.orientation === "vertical"
+              ? pt.c === os.col && pt.r >= os.row && pt.r < os.row + os.size
+              : pt.r === os.row && pt.c >= os.col && pt.c < os.col + os.size
+          )
+        );
+        if (!overlap) return { row: r, col: c };
+      }
+    }
+  }
+  return { row: clampRow, col: clampCol };
+}
+
+

@@ -3,172 +3,175 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import useGameStore, { Ship } from "../store/gameStore";
-import Piece from "./Piece";
 
 interface BoardProps {
   who: "player" | "opponent";
 }
 
-const Board: React.FC<BoardProps> = ({ who }) => {
-  const boardSize = 10;
-  const isPlayer = who === "player";
-
-  // 动态格子大小：自己最大 800px 宽度，否则固定 30px
-  const [gridSize, setGridSize] = useState(30);
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (isPlayer) {
-      const size = Math.min(window.innerWidth * 0.6, 800) / boardSize;
-      setGridSize(size);
-    } else {
-      setGridSize(30);
-    }
-  }, [isPlayer]);
-
+export default function Board({ who }: BoardProps) {
   const {
+    playerId,          // ↗️ 拿到我們的 playerId
     ships,
+    sunkenShips,
     showShips,
     initializeShips,
     connectToServer,
     gameStatus,
     currentTurn,
-    socket,
+    socket,            // 其實不再对比 socket.id
     moveShip,
     rotateShip,
     makeMove,
+    opMatrix,
+    myMatrix,
   } = useGameStore();
 
-  // 自己或对手的击中/未中矩阵，只在对手棋盘展示
-  const [opMatrix, setOpMatrix] = useState<number[][]>(
-    Array.from({ length: boardSize }, () => Array(boardSize).fill(0))
-  );
-
-  // 一次性初始化
   const inited = useRef(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [gridSize, setGridSize] = useState(0);
+
   useEffect(() => {
-    if (inited.current) return;
-    initializeShips();
-    connectToServer();
-
-    // 监听 move_made 事件，更新对手矩阵
-    socket?.on("move_made", ({ attacker, x, y, hit }) => {
-      if (attacker === socket.id) {
-        setOpMatrix((prev) => {
-          const next = prev.map((row) => row.slice());
-          next[x][y] = hit ? 2 : 3;
-          return next;
-        });
-      }
-    });
-
-    inited.current = true;
-  }, [initializeShips, connectToServer, socket]);
-
-  // 拖放布船
-  const handleDrop = (e: React.DragEvent, r: number, c: number) => {
-    if (gameStatus !== "waiting" || !isPlayer) return;
-    e.preventDefault();
-    const id = e.dataTransfer.getData("shipId");
-    if (id) moveShip(Number(id), r, c);
-  };
-
-  // 点击对手格子
-  const handleCellClick = (r: number, c: number) => {
-    if (
-      !isPlayer &&
-      gameStatus === "playing" &&
-      currentTurn === socket?.id &&
-      opMatrix[r][c] === 0
-    ) {
-      makeMove(r, c);
+    if (!inited.current) {
+      initializeShips();
+      connectToServer();
+      inited.current = true;
     }
-  };
+    const updateSize = () => {
+      if (containerRef.current) {
+        const usable = containerRef.current.clientWidth - 9;
+        setGridSize(Math.floor(usable / 10));
+      }
+    };
+    updateSize();
+    window.addEventListener("resize", updateSize);
+    return () => window.removeEventListener("resize", updateSize);
+  }, [initializeShips, connectToServer]);
 
-  // 矩阵：自己的布船 or 对手已击状态
-  const myMatrix = showShips(ships);
+  const isPlayer = who === "player";
+  const matrix = showShips(ships);
+  const hits = isPlayer ? myMatrix : opMatrix;
 
   return (
     <div
-      className="relative border-2 border-gray-600 rounded-lg p-2 bg-gray-700 shadow-inner"
-      style={{
-        width: boardSize * gridSize,
-        height: boardSize * gridSize,
-      }}
+      ref={containerRef}
+      className="w-full max-w-screen-lg overflow-x-auto bg-gray-800 p-[1px] rounded-lg"
     >
-      {/* 棋格 */}
-      {Array.from({ length: boardSize }).map((_, r) =>
-        Array.from({ length: boardSize }).map((_, c) => {
-          const baseStyle: React.CSSProperties = {
-            position: "absolute",
-            top: r * gridSize,
-            left: c * gridSize,
-            width: gridSize,
-            height: gridSize,
-            boxSizing: "border-box",
-            border: "1px solid #444",
-            backgroundColor: isPlayer
-              ? myMatrix[r][c] === 1
-                ? "rgba(200,200,200,0.4)"
-                : "#222"
-              : "#222",
-            cursor:
-              !isPlayer &&
-              gameStatus === "playing" &&
-              currentTurn === socket?.id &&
-              opMatrix[r][c] === 0
-                ? "pointer"
-                : "default",
-          };
-          return (
-            <div
-              key={`${r}-${c}`}
-              style={baseStyle}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => handleDrop(e, r, c)}
-              onClick={() => handleCellClick(r, c)}
-            >
-              {/* 命中/未命中标记 */}
-              {!isPlayer && opMatrix[r][c] === 2 && (
-                <img
-                  src="/hit.png"
-                  alt="hit"
-                  style={{
-                    width: gridSize,
-                    height: gridSize,
-                    pointerEvents: "none",
+      <div
+        className="relative"
+        style={{ width: gridSize * 10, height: gridSize * 10 }}
+      >
+        <div className="grid grid-cols-10 grid-rows-10 absolute top-0 left-0">
+          {matrix.map((row, r) =>
+            row.map((cell, c) => {
+              const showShip = isPlayer && cell === 1 && !sunkenShips.includes(cell);
+              const hitState = hits[r][c]; // 0=未打, 2=命中,3=未命中
+              const canClick =
+                who === "opponent" &&
+                gameStatus === "playing" &&
+                currentTurn === playerId &&    // ✅ 改用 playerId 判断
+                hitState === 0;
+              return (
+                <div
+                  key={`${r}-${c}`}
+                  className={[
+                    "aspect-square border border-gray-600",
+                    showShip ? "bg-gray-400" : "bg-gray-700",
+                    canClick ? "cursor-pointer" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                  style={{ width: gridSize, height: gridSize }}
+                  onClick={() => canClick && makeMove(r, c)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    if (isPlayer && gameStatus === "waiting") {
+                      const id = e.dataTransfer.getData("shipId");
+                      id && moveShip(Number(id), r, c);
+                    }
                   }}
-                />
-              )}
-              {!isPlayer && opMatrix[r][c] === 3 && (
-                <img
-                  src="/no_hit.png"
-                  alt="miss"
-                  style={{
-                    width: gridSize,
-                    height: gridSize,
-                    pointerEvents: "none",
-                  }}
-                />
-              )}
-            </div>
-          );
-        })
-      )}
+                >
+                  {hitState === 2 && (
+                    <img
+                      src="/hit.png"
+                      alt="hit"
+                      className="w-full h-full pointer-events-none"
+                    />
+                  )}
+                  {hitState === 3 && (
+                    <img
+                      src="/no_hit.png"
+                      alt="miss"
+                      className="w-full h-full pointer-events-none"
+                    />
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
 
-      {/* 只在 waiting 且 自己棋盘 时显示、可拖拽/旋转的船 */}
-      {isPlayer &&
-        gameStatus === "waiting" &&
-        ships.map((ship: Ship) => (
-          <Piece
-            key={ship.id}
-            ship={ship}
-            gridSize={gridSize}
-            draggable={true}
-            onRotate={() => rotateShip(ship.id)}
-          />
-        ))}
+        {/* 等待阶段：玩家布舰 */}
+        {isPlayer &&
+          gameStatus === "waiting" &&
+          ships.map((ship: Ship) => {
+            const { id, size, row, col, orientation, imageId } = ship;
+            const isSpecial = imageId !== size;
+            const imageUrl = isSpecial
+              ? `/ships/ship-${size}-${orientation === "horizontal" ? "h" : "v"}-${imageId}.png`
+              : `/ships/ship-${size}-${orientation === "horizontal" ? "h" : "v"}.png`;
+            const w = orientation === "horizontal" ? size * gridSize : gridSize;
+            const h = orientation === "horizontal" ? gridSize : size * gridSize;
+            return (
+              <img
+                key={id}
+                src={imageUrl}
+                alt={`ship-${id}`}
+                draggable
+                onDragStart={(e) => e.dataTransfer.setData("shipId", id.toString())}
+                onClick={() => rotateShip(id)}
+                className="absolute z-10"
+                style={{
+                  top: row * gridSize,
+                  left: col * gridSize,
+                  width: w,
+                  height: h,
+                  cursor: "pointer",
+                }}
+              />
+            );
+          })}
+
+        {/* 已击沉整艘船 */}
+        {sunkenShips.map((sid) => {
+          const ship = ships.find((s) => s.id === sid);
+          if (!ship) return null;
+          const { size, row, col, orientation, imageId } = ship;
+          const isSpecial = imageId !== size;
+          const imageUrl = isSpecial
+            ? `/ships/ship-${size}-${
+                orientation === "horizontal" ? "h" : "v"
+              }-${imageId}.png`
+            : `/ships/ship-${size}-${
+                orientation === "horizontal" ? "h" : "v"
+              }.png`;
+          const w = orientation === "horizontal" ? size * gridSize : gridSize;
+          const h = orientation === "horizontal" ? gridSize : size * gridSize;
+          return (
+            <img
+              key={`sunken-${sid}`}
+              src={imageUrl}
+              alt={`sunken-${sid}`}
+              className="absolute opacity-80 z-20"
+              style={{
+                top: row * gridSize,
+                left: col * gridSize,
+                width: w,
+                height: h,
+              }}
+            />
+          );
+        })}
+      </div>
     </div>
   );
-};
-
-export default Board;
+}
