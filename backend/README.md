@@ -92,14 +92,14 @@
 
 ### `POST /api/opponent`
 
-查詢對手 ID。
+查詢自己在房間裡的身分（your_side）、對手的身分（opponent_side）與對手的 player_id。
 
 - **請求 Body**：
 
 ```json
 {
-  "room_id": "xxx",
-  "player": "player1" // 查詢該玩家的船艦
+  "room_id": "xxx-房間編號xxx",
+  "player":  "你自己的 player_id（UUID 或 \"ai\"）"
 }
 ```
 
@@ -107,7 +107,9 @@
 
 ```json
 {
-  "opponent_id": "player2"
+  "your_side":     "player1" | "player2",
+  "opponent_side": "player1" | "player2",
+  "opponent_id":   "對手的 player_id（UUID 或 \"ai\"）"
 }
 ```
 

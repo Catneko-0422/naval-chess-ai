@@ -223,25 +223,42 @@ def ai_auto_play(room_id):
         if not keep_shooting:
             break
 
-@app.route('/api/opponent', methods=['GET'])
+@app.route('/api/opponent', methods=['POST'])
 def get_opponent():
-    room_id   = request.args.get('room_id')
-    player    = request.args.get('player')  # "player1" 或 "player2" 或 "ai"
+    data = request.get_json()
+    room_id = data.get('room_id')
+    player  = data.get('player')   # 這裡傳的是實際的 player_id（UUID 或 "ai"）
+
     if not room_id or not player:
         return jsonify({"error": "缺少 room_id 或 player"}), 400
 
-    row = db.execute("SELECT player1_id, player2_id FROM game WHERE room_id = ?", (room_id,)).fetchone()
+    row = db.execute(
+        "SELECT player1_id, player2_id FROM game WHERE room_id = ?",
+        (room_id,)
+    ).fetchone()
     if not row:
         return jsonify({"error": "找不到房間"}), 404
 
-    if player == row["player1_id"]:
-        opponent = row["player2_id"]
-    elif player == row["player2_id"]:
-        opponent = row["player1_id"]
+    p1 = row['player1_id']
+    p2 = row['player2_id']
+
+    # 決定傳回哪一邊
+    if player == p1:
+        your_side     = "player1"
+        opponent_side = "player2"
+        opponent_id   = p2
+    elif player == p2:
+        your_side     = "player2"
+        opponent_side = "player1"
+        opponent_id   = p1
     else:
         return jsonify({"error": "player 不在此房間"}), 400
 
-    return jsonify({"opponent_id": opponent}), 200
+    return jsonify({
+        "opponent_id":   opponent_id,
+        "your_side":     your_side,
+        "opponent_side": opponent_side
+    }), 200
 
 
 @app.route('/api/generate_board', methods=['GET'])
