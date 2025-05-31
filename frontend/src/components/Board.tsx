@@ -149,7 +149,7 @@ export default function Board({ who }: BoardProps) {
           opponentSunkenShipsDetail.map(ship => {
             const { id, size, row, col, orientation, imageId } = ship;
             const isSpecial = imageId !== size;
-            const imageUrl = isSpecial && size === 3
+            const imageUrl = isSpecial
               ? `/ships/ship-${size}-${orientation === "horizontal" ? "h" : "v"}-2.png`
               : `/ships/ship-${size}-${orientation === "horizontal" ? "h" : "v"}.png`;
             const w = orientation === "horizontal" ? size * gridSize : gridSize;
