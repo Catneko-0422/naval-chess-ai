@@ -282,12 +282,15 @@ def get_sunken_ships():
     board_key = f"{player}_board"
     try:
         board_data = json.loads(room[board_key])
-        sunk = check_sunken_ships(board_data)
+        sunk_ids = check_sunken_ships(board_data)
+        sunk_details = [ship for ship in board_data["ships"] if ship["id"] in sunk_ids]
         return {
-            "sunken_ship_ids": sunk,
+            "sunken_ship_ids": sunk_ids,
+            "sunken_ships": sunk_details, 
             "total_ships": len(board_data["ships"]),
-            "sunken_count": len(sunk),
+            "sunken_count": len(sunk_ids),
         }
+
     except Exception as e:
         return {"error": f"解析失敗：{str(e)}"}, 500
 

@@ -122,7 +122,7 @@
 ```json
 {
   "room_id": "xxx",
-  "player": "player1" // 查詢該玩家的船艦
+  "player": "player1" // 查詢player1 or player2玩家的船艦
 }
 ```
 
@@ -131,6 +131,10 @@
 ```json
 {
   "sunken_ship_ids": [0, 1],
+  "sunken_ships": [
+    { "id": 0, "size": 2, "row": 5, "col": 9, "orientation": "vertical" },
+    { "id": 1, "size": 3, "row": 1, "col": 4, "orientation": "horizontal" }
+  ],
   "total_ships": 5,
   "sunken_count": 2
 }

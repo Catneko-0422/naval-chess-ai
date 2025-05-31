@@ -34,6 +34,7 @@ interface GameState {
   opponentSide: "player1" | "player2" | null;
   // 擊沉紀錄
   sunkenShips: number[];
+  opponent_sunkenShips: number[]; // 對手已擊沉的船隻 ID
   lastMove: LastMove | null;
   lastSunken: number[];
   // 矩陣
@@ -48,6 +49,7 @@ interface GameState {
   setMySide: (side: "player1" | "player2") => void;
   setOpponentSide: (side: "player1" | "player2") => void;
   setSunkenShips: (ids: number[]) => void;
+  setOpponent_SunkenShips: (ids: number[]) => void;
   setLastMove: (lm: LastMove) => void;
   setLastSunken: (ids: number[]) => void;
 
@@ -79,6 +81,7 @@ export default create<GameState>((set, get) => ({
   mySide: null,
   opponentSide: null,
   sunkenShips: [],
+  opponent_sunkenShips: [],
   lastMove: null,
   lastSunken: [],
   opMatrix: emptyMatrix(),
@@ -102,6 +105,7 @@ export default create<GameState>((set, get) => ({
   setMySide: side => set({ mySide: side }),
   setOpponentSide: side => set({ opponentSide: side }),
   setSunkenShips: ids => set({ sunkenShips: ids }),
+  setOpponent_SunkenShips: ids => set({ opponent_sunkenShips: ids }),
   setLastMove: lm => set({ lastMove: lm }),
   setLastSunken: ids => set({ lastSunken: ids }),
 

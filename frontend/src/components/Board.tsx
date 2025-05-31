@@ -13,6 +13,7 @@ export default function Board({ who }: BoardProps) {
     playerId,
     ships,
     sunkenShips,
+    opponent_sunkenShips,
     showShips,
     initializeShips,
     connectToServer,
@@ -145,6 +146,7 @@ export default function Board({ who }: BoardProps) {
         {!isPlayer &&
           sunkenShips.map(sid => {
             const ship = ships.find(s => s.id === sid);
+            console.log("sunken ship", sid, ship);
             if (!ship) return null;
             const { size, row, col, orientation, imageId } = ship;
             const isSpecial = imageId !== size;
