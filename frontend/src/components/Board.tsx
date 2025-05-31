@@ -14,6 +14,7 @@ export default function Board({ who }: BoardProps) {
     ships,
     sunkenShips,
     opponent_sunkenShips,
+    opponentSunkenShipsDetail,
     showShips,
     initializeShips,
     connectToServer,
@@ -118,7 +119,7 @@ export default function Board({ who }: BoardProps) {
             const { id, size, row, col, orientation, imageId } = ship;
             const isSpecial = imageId !== size;
             const imageUrl = isSpecial
-              ? `/ships/ship-${size}-${orientation === "horizontal" ? "h" : "v"}-${imageId}.png`
+              ? `/ships/ship-${size}-${orientation === "horizontal" ? "h" : "v"}-2.png`
               : `/ships/ship-${size}-${orientation === "horizontal" ? "h" : "v"}.png`;
             const w = orientation === "horizontal" ? size * gridSize : gridSize;
             const h = orientation === "horizontal" ? gridSize : size * gridSize;
@@ -142,24 +143,22 @@ export default function Board({ who }: BoardProps) {
             );
           })}
 
-        {/* 只在對手棋盤上顯示：已擊沉整艘船 */}
+        {/* 對手棋盤顯示已擊沉的艦船（詳細） */}
         {!isPlayer &&
-          sunkenShips.map(sid => {
-            const ship = ships.find(s => s.id === sid);
-            console.log("sunken ship", sid, ship);
-            if (!ship) return null;
-            const { size, row, col, orientation, imageId } = ship;
+          gameStatus === "playing" &&
+          opponentSunkenShipsDetail.map(ship => {
+            const { id, size, row, col, orientation, imageId } = ship;
             const isSpecial = imageId !== size;
-            const imageUrl = isSpecial
-              ? `/ships/ship-${size}-${orientation === "horizontal" ? "h" : "v"}-${imageId}.png`
+            const imageUrl = isSpecial && size === 3
+              ? `/ships/ship-${size}-${orientation === "horizontal" ? "h" : "v"}-2.png`
               : `/ships/ship-${size}-${orientation === "horizontal" ? "h" : "v"}.png`;
             const w = orientation === "horizontal" ? size * gridSize : gridSize;
             const h = orientation === "horizontal" ? gridSize : size * gridSize;
             return (
               <img
-                key={`sunken-${sid}`}
+                key={`sunken-detail-${id}`}
                 src={imageUrl}
-                alt={`sunken-${sid}`}
+                alt={`sunken-detail-${id}`}
                 className="absolute opacity-80 z-20"
                 style={{
                   top: row * gridSize,

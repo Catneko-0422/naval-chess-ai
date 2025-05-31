@@ -19,29 +19,24 @@ interface LastMove {
 }
 
 interface GameState {
-  // 棋盤與 Socket
   ships: Ship[];
   socket: Socket | null;
-  // 遊戲狀態
   gameStatus: "waiting" | "playing" | "finished";
   currentTurn: string | null;
-  // 身份辨識
   playerId: string | null;
-  opponentId: string | null;        // 真實對手的 player_id (UUID 或 "ai")
+  opponentId: string | null;
   roomId: string | null;
   isAiGame: boolean;
   mySide: "player1" | "player2" | null;
   opponentSide: "player1" | "player2" | null;
-  // 擊沉紀錄
   sunkenShips: number[];
-  opponent_sunkenShips: number[]; // 對手已擊沉的船隻 ID
+  opponent_sunkenShips: number[];
+  opponentSunkenShipsDetail: Ship[];
   lastMove: LastMove | null;
   lastSunken: number[];
-  // 矩陣
   opMatrix: number[][];
   myMatrix: number[][];
 
-  // setter
   setOpMatrixCell: (x: number, y: number, v: number) => void;
   setMyMatrixCell: (x: number, y: number, v: number) => void;
   setPlayerId: (id: string) => void;
@@ -50,10 +45,10 @@ interface GameState {
   setOpponentSide: (side: "player1" | "player2") => void;
   setSunkenShips: (ids: number[]) => void;
   setOpponent_SunkenShips: (ids: number[]) => void;
+  setOpponentSunkenShipsDetail: (ships: Ship[]) => void;
   setLastMove: (lm: LastMove) => void;
   setLastSunken: (ids: number[]) => void;
 
-  // actions
   initializeShips: () => void;
   moveShip: (id: number, row: number, col: number) => void;
   rotateShip: (id: number) => void;
@@ -82,12 +77,12 @@ export default create<GameState>((set, get) => ({
   opponentSide: null,
   sunkenShips: [],
   opponent_sunkenShips: [],
+  opponentSunkenShipsDetail: [],
   lastMove: null,
   lastSunken: [],
   opMatrix: emptyMatrix(),
   myMatrix: emptyMatrix(),
 
-  // ---- setters ----
   setOpMatrixCell: (x, y, v) =>
     set(state => {
       const m = state.opMatrix.map(r => r.slice());
@@ -106,10 +101,10 @@ export default create<GameState>((set, get) => ({
   setOpponentSide: side => set({ opponentSide: side }),
   setSunkenShips: ids => set({ sunkenShips: ids }),
   setOpponent_SunkenShips: ids => set({ opponent_sunkenShips: ids }),
+  setOpponentSunkenShipsDetail: ships => set({ opponentSunkenShipsDetail: ships }),
   setLastMove: lm => set({ lastMove: lm }),
   setLastSunken: ids => set({ lastSunken: ids }),
 
-  // ---- 初始化隨機排艦 ----
   initializeShips: async () => {
     const res = await fetch(`${API}/api/generate_board`);
     const data = await res.json();
@@ -120,7 +115,6 @@ export default create<GameState>((set, get) => ({
     set({ ships: shipsWithImage });
   },
 
-  // ---- 拖放排艦 ----
   moveShip: (id, targetRow, targetCol) => {
     const ships = get().ships;
     const ship = ships.find(s => s.id === id);
@@ -162,12 +156,10 @@ export default create<GameState>((set, get) => ({
     return m;
   },
 
-  // ---- WebSocket & API ----
   connectToServer: () => {
     const socket = io(API, { transports: ["websocket"] });
     socket.on("connect", () => set({ socket }));
 
-    // 1) 收到 joined_game：立刻 POST /api/opponent 拿 your_side/opponent_side/opponent_id
     socket.on("joined_game", async ({ room_id }) => {
       set({ roomId: room_id });
 
@@ -197,7 +189,6 @@ export default create<GameState>((set, get) => ({
       }
     });
 
-    // 2) 備援：match_success 也提供你是哪方(player1/player2)
     socket.on("match_success", ({ room_id, player }) => {
       set({
         roomId: room_id,
@@ -206,25 +197,21 @@ export default create<GameState>((set, get) => ({
       });
     });
 
-    // 開始遊戲
     socket.on("game_started", ({ first_turn }) =>
       set({ gameStatus: "playing", currentTurn: first_turn })
     );
 
-    // 出招結果
     socket.on("move_made", async ({ attacker, x, y, hit }) => {
       const prev = get().sunkenShips;
       set({ lastSunken: [] });
       set({ lastMove: { attacker, x, y, hit } });
 
-      // 更新矩陣
       if (attacker === get().playerId) {
         get().setOpMatrixCell(x, y, hit ? 2 : 3);
       } else {
         get().setMyMatrixCell(x, y, hit ? 2 : 3);
       }
 
-      // 換回合或再打
       const nextTurn = hit
         ? attacker
         : attacker === get().playerId
@@ -232,7 +219,6 @@ export default create<GameState>((set, get) => ({
           : get().playerId!;
       set({ currentTurn: nextTurn });
 
-      // 命中則 POST /api/sunken_ships 查詢已沉
       if (hit && get().roomId && get().opponentSide) {
         const targetSide =
           attacker === get().playerId
@@ -248,11 +234,13 @@ export default create<GameState>((set, get) => ({
             }),
           });
           if (res.ok) {
-            const { sunken_ship_ids } = await res.json();
+            const { sunken_ship_ids, sunken_ships } = await res.json();
             const newIds = sunken_ship_ids.filter((i: number) => !prev.includes(i));
             set({
               sunkenShips: sunken_ship_ids,
-              lastSunken: newIds
+              lastSunken: newIds,
+              opponent_sunkenShips: attacker === get().playerId ? sunken_ship_ids : get().opponent_sunkenShips,
+              opponentSunkenShipsDetail: attacker === get().playerId ? sunken_ships : get().opponentSunkenShipsDetail
             });
           } else {
             console.error("Bad /api/sunken_ships：", await res.text());
@@ -266,7 +254,6 @@ export default create<GameState>((set, get) => ({
     socket.on("game_over", () => set({ gameStatus: "finished" }));
   },
 
-  // 加入遊戲 (PVP / PVE)
   joinGame: (isAi = false) => {
     const { socket, ships, playerId } = get();
     if (!socket || !playerId) return;
@@ -286,7 +273,6 @@ export default create<GameState>((set, get) => ({
       });
     }
 
-    // 傳送布陣
     const board = emptyMatrix();
     ships.forEach(ship =>
       Array(ship.size).fill(0).forEach((_, i) => {
@@ -304,7 +290,6 @@ export default create<GameState>((set, get) => ({
     });
   },
 
-  // 發動攻擊
   makeMove: (x, y) => {
     const { socket, roomId, playerId, currentTurn } = get();
     if (!socket || !roomId || currentTurn !== playerId) return;
@@ -312,7 +297,6 @@ export default create<GameState>((set, get) => ({
   },
 }));
 
-// 輔助：找到最近合法放置位置
 function findNearestValidPosition(
   targetRow: number,
   targetCol: number,
