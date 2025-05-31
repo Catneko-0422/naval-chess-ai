@@ -132,8 +132,8 @@
 {
   "sunken_ship_ids": [0, 1],
   "sunken_ships": [
-    { "id": 0, "size": 2, "row": 5, "col": 9, "orientation": "vertical" },
-    { "id": 1, "size": 3, "row": 1, "col": 4, "orientation": "horizontal" }
+    { "id": 0, "size": 2, "row": 5, "col": 9, "orientation": "vertical", "imageId": 2 },
+    { "id": 1, "size": 3, "row": 1, "col": 4, "orientation": "horizontal", "imageId": 3 }
   ],
   "total_ships": 5,
   "sunken_count": 2

@@ -283,16 +283,27 @@ def get_sunken_ships():
     try:
         board_data = json.loads(room[board_key])
         sunk_ids = check_sunken_ships(board_data)
-        sunk_details = [ship for ship in board_data["ships"] if ship["id"] in sunk_ids]
+        sunk_details = []
+        for ship in board_data["ships"]:
+            if ship["id"] in sunk_ids:
+                # ⭐ 補 imageId：完全比照前端 logic
+                if "imageId" not in ship:
+                    if ship["size"] == 3:
+                        # 若你的3格船有不同圖要精確比對 id
+                        ship["imageId"] = 2 if ship["id"] == 2 else 3
+                    else:
+                        ship["imageId"] = ship["size"]
+                sunk_details.append(ship)
         return {
             "sunken_ship_ids": sunk_ids,
-            "sunken_ships": sunk_details, 
+            "sunken_ships": sunk_details,
             "total_ships": len(board_data["ships"]),
             "sunken_count": len(sunk_ids),
         }
 
     except Exception as e:
         return {"error": f"解析失敗：{str(e)}"}, 500
+
 
 def check_sunken_ships(board_data):
     board = board_data["board"]
