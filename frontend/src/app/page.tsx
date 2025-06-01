@@ -33,7 +33,11 @@ export default function Home() {
             initial={{ scale: 0.7, opacity: 0 }}
             animate={{ scale: [0.7, 1.2, 1], opacity: [0, 1] }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.8, type: "spring" }}
+            transition={{
+              duration: 0.8,
+              type: "tween",
+              ease: "easeInOut"
+            }}
           >
             <span className="text-5xl font-black text-yellow-400 drop-shadow-lg animate-bounce">
               🎉 恭喜你獲勝！🎉
@@ -41,6 +45,7 @@ export default function Home() {
           </motion.div>
         )}
       </AnimatePresence>
+
 
       <motion.h1
         className="text-4xl font-extrabold text-center text-white mb-8"
