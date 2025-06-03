@@ -12,8 +12,6 @@ export default function Board({ who }: BoardProps) {
   const {
     playerId,
     ships,
-    sunkenShips,
-    opponent_sunkenShips,
     opponentSunkenShipsDetail,
     showShips,
     initializeShips,

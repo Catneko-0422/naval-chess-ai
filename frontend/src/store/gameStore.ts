@@ -236,12 +236,17 @@ export default create<GameState>((set, get) => ({
           if (res.ok) {
             const { sunken_ship_ids, sunken_ships } = await res.json();
             const newIds = sunken_ship_ids.filter((i: number) => !prev.includes(i));
-            set({
-              sunkenShips: sunken_ship_ids,
-              lastSunken: newIds,
-              opponent_sunkenShips: attacker === get().playerId ? sunken_ship_ids : get().opponent_sunkenShips,
-              opponentSunkenShipsDetail: attacker === get().playerId ? sunken_ships : get().opponentSunkenShipsDetail
-            });
+            if (attacker === get().playerId) {
+              set({
+                opponent_sunkenShips: sunken_ship_ids,
+                opponentSunkenShipsDetail: sunken_ships
+              });
+            } else {
+              set({
+                sunkenShips: sunken_ship_ids,
+                lastSunken: newIds
+              });
+            }
           } else {
             console.error("Bad /api/sunken_ships：", await res.text());
           }
