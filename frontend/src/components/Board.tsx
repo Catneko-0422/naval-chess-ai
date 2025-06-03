@@ -81,12 +81,14 @@ export default function Board({ who }: BoardProps) {
                     .filter(Boolean)
                     .join(" ")}
                   style={{ width: gridSize, height: gridSize }}
-                  onClick={() => canClick && makeMove(r, c)}
-                  onDragOver={e => e.preventDefault()}
-                  onDrop={e => {
+                  onClick={() => {
+                    if (canClick) makeMove(r, c);
+                  }}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
                     if (isPlayer && gameStatus === "waiting") {
                       const id = e.dataTransfer.getData("shipId");
-                      id && moveShip(Number(id), r, c);
+                      if (id) moveShip(Number(id), r, c);
                     }
                   }}
                 >
@@ -106,7 +108,7 @@ export default function Board({ who }: BoardProps) {
                   )}
                 </div>
               );
-            })
+            }),
           )}
         </div>
 
@@ -127,7 +129,9 @@ export default function Board({ who }: BoardProps) {
                 src={imageUrl}
                 alt={`ship-${id}`}
                 draggable
-                onDragStart={e => e.dataTransfer.setData("shipId", id.toString())}
+                onDragStart={(e) =>
+                  e.dataTransfer.setData("shipId", id.toString())
+                }
                 onClick={() => rotateShip(id)}
                 className="absolute z-10"
                 style={{
@@ -144,7 +148,7 @@ export default function Board({ who }: BoardProps) {
         {/* 對手棋盤顯示已擊沉的艦船（詳細） */}
         {!isPlayer &&
           gameStatus === "playing" &&
-          opponentSunkenShipsDetail.map(ship => {
+          opponentSunkenShipsDetail.map((ship) => {
             const { id, size, row, col, orientation, imageId } = ship;
             const isSpecial = imageId !== size;
             const imageUrl = isSpecial
