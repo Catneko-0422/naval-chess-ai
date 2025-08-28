@@ -1,0 +1,31 @@
+# backend/dockerfile
+FROM python:3.12-slim AS base
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:${PATH}"
+
+COPY pyproject.toml uv.lock* ./
+
+RUN uv sync --frozen --no-dev
+
+ENV VIRTUAL_ENV=/app/.venv
+ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
+
+COPY . .
+
+VOLUME ["/app/instance"]
+
+ENV FLASK_ENV=production
+
+EXPOSE 5000
+
+CMD ["uv", "run", "gunicorn", "-k", "eventlet", "-w", "1", "-b", "0.0.0.0:5000", "app:app"]

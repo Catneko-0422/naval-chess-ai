@@ -1,15 +1,29 @@
-# Naval Chess WebSocket 遊戲伺服器
+# ⚓️ DQN Naval Chess (backend)
 
-這是一個使用 Flask 與 Flask-SocketIO 實作的海戰棋遊戲後端，支援玩家對玩家（PVP）與玩家對 AI（PVE）模式喵！
+這是一個使用 Flask + Flask-SocketIO + SQLite 的海戰棋（Battleship）遊戲後端，支援 玩家對玩家（PVP） 與 玩家對 AI（PVE），並已針對 SQLite 併發安全做過強化（每次操作自開連線、WAL 模式），此專案(backend)使用uv管理套件
 
-## ⚙️ 技術棧
+## 技術棧
 
 - Python 3.12+
 - Flask
 - Flask-SocketIO
 - SQLite3
 
-## 🧠 核心功能
+## 專案結構
+```bash
+.
+├─ ai/
+│  ├─ battleship_board.py   # 提供 generate_board() -> {board, ships}
+│  └─ evaluate_method.py    # 提供 evaluate(board) -> [(x, y), ...]
+├─ instance/                # SQLite DB 會自動建立於此
+├─ test/                    # 測試用客戶端
+│  └─ test_1.py             # 測試客戶端_1
+│  └─ test_2.py             # 測試客戶端_2
+├─ app.py                   # 程式入口點
+└─ README.md
+```
+
+## 核心功能
 
 ### WebSocket 事件
 
@@ -88,7 +102,7 @@
 
 ---
 
-## 🧩 REST API
+## REST API
 
 ### `POST /api/opponent`
 
@@ -180,17 +194,18 @@ CREATE TABLE game (
 
 ---
 
-## 🚀 啟動伺服器
+## 啟動伺服器
 
 ```bash
-python app.py
+uv sync
+uv run python app.py
 ```
 
 預設會監聽在 `http://0.0.0.0:5000`
 
 ---
 
-## 🐾 註解
+## 註解
 
 - 棋盤 `board` 是一個 10x10 的二維陣列，數字代表：
 

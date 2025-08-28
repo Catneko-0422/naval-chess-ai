@@ -1,0 +1,59 @@
+# docker-compose.yml
+version: "3.9"
+
+name: naval-chess
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: dockerfile
+    image: naval-chess-backend:latest
+    container_name: naval-chess-backend
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - backend_instance:/app/instance
+    ports:
+      - "5000:5000"
+    networks:
+      - appnet
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5000/ >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: naval-chess-frontend:latest
+    container_name: naval-chess-frontend
+    environment:
+      - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
+      # 你的前端如需呼叫後端，請把 API 位址設在環境變數（依你專案而定）
+      # 例如：- NEXT_PUBLIC_API_BASE=http://backend:5000
+    ports:
+      - "3000:3000"
+    networks:
+      - appnet
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/ >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+networks:
+  appnet:
+    driver: bridge
+
+volumes:
+  backend_instance:

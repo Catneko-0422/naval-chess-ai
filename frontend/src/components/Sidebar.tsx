@@ -148,14 +148,14 @@ export default function Sidebar() {
                                     >
                                         {hitState === 2 && (
                                             <img
-                                                src="/hit.png"
+                                                src="/images/hits_images/hit.png"
                                                 alt="hit"
                                                 className="absolute inset-0 w-full h-full pointer-events-none"
                                             />
                                         )}
                                         {hitState === 3 && (
                                             <img
-                                                src="/no_hit.png"
+                                                src="/images/hits_images/no_hit.png"
                                                 alt="miss"
                                                 className="absolute inset-0 w-full h-full pointer-events-none"
                                             />
@@ -175,8 +175,8 @@ export default function Sidebar() {
                         const { size, row, col, orientation, imageId } = ship;
                         const isSpecial = imageId !== undefined && imageId !== ship.size;
                         const imageUrl = isSpecial
-                            ? `/ships/ship-${size}-${orientation === "horizontal" ? "h" : "v"}-${imageId}.png`
-                            : `/ships/ship-${size}-${orientation === "horizontal" ? "h" : "v"}.png`;
+                            ? `ships/ship-${size}-${orientation === "horizontal" ? "h" : "v"}-${imageId}.png`
+                            : `ships/ship-${size}-${orientation === "horizontal" ? "h" : "v"}.png`;
 
                         // ZH: 百分比定位（每格 10%）
                         // EN: Percentage positioning (each cell = 10%)
@@ -188,7 +188,7 @@ export default function Sidebar() {
                         return (
                             <img
                                 key={`sunken-mini-${sid}`}
-                                src={imageUrl}
+                                src={`/images/${imageUrl}`}
                                 alt={`sunken-${sid}`}
                                 className="absolute opacity-80 pointer-events-none"
                                 style={{ top, left, width, height }}
