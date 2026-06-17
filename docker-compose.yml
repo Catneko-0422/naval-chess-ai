@@ -1,7 +1,4 @@
-# docker-compose.yml
-version: "3.9"
-
-name: naval-chess
+version: "3.8"
 services:
   backend:
     build:

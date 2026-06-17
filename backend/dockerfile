@@ -16,6 +16,7 @@ ENV PATH="/root/.local/bin:${PATH}"
 COPY pyproject.toml uv.lock* ./
 
 RUN uv sync --frozen --no-dev
+RUN uv pip install --force-reinstall --no-deps torch --index-url https://download.pytorch.org/whl/cpu
 
 ENV VIRTUAL_ENV=/app/.venv
 ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
