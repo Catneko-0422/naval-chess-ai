@@ -151,8 +151,9 @@ def handle_join_game(data):
         ai_turn_array = None
 
         if is_ai_game:
-            from ai.evaluate_method import evaluate
-            from ai.battleship_board import generate_board
+from ai.evaluate_method import evaluate
+from ai.battleship_board import generate_board
+from ai.utils import check_sunken_ships
             ai_setup = generate_board()
             player2_board_json = json.dumps(ai_setup)
             ai_moves = evaluate(board=data['board'])
@@ -359,15 +360,7 @@ def get_sunken_ships():
     try:
         board_data = json.loads(room[board_key])
         sunk_ids = check_sunken_ships(board_data)
-        sunk_details = []
-        for ship in board_data["ships"]:
-            if ship["id"] in sunk_ids:
-                if "imageId" not in ship:
-                    if ship["size"] == 3:
-                        ship["imageId"] = 2 if ship["id"] == 2 else 3
-                    else:
-                        ship["imageId"] = ship["size"]
-                sunk_details.append(ship)
+        sunk_details = [ship for ship in board_data["ships"] if ship["id"] in sunk_ids]
         return {
             "sunken_ship_ids": sunk_ids,
             "sunken_ships": sunk_details,
@@ -377,27 +370,6 @@ def get_sunken_ships():
 
     except Exception as e:
         return {"error": f"解析失敗：{str(e)}"}, 500
-
-# ----------------------------
-# 工具：判斷沉船
-# ----------------------------
-def check_sunken_ships(board_data):
-    board = board_data["board"]
-    sunken_ships = []
-    for ship in board_data["ships"]:
-        size = ship["size"]
-        row, col = ship["row"], ship["col"]
-        orientation = ship["orientation"]
-
-        if orientation == "horizontal":
-            cells = [(row, col + i) for i in range(size)]
-        else:
-            cells = [(row + i, col) for i in range(size)]
-
-        if all(board[r][c] == 2 for r, c in cells):
-            sunken_ships.append(ship["id"])
-
-    return sunken_ships
 
 # ----------------------------
 # 進入點
