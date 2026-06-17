@@ -9,6 +9,7 @@ from datetime import datetime
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit, join_room
+from ai.utils import check_sunken_ships
 
 app = Flask(__name__)
 CORS(app)
@@ -151,9 +152,8 @@ def handle_join_game(data):
         ai_turn_array = None
 
         if is_ai_game:
-from ai.evaluate_method import evaluate
-from ai.battleship_board import generate_board
-from ai.utils import check_sunken_ships
+            from ai.evaluate_method import evaluate
+            from ai.battleship_board import generate_board
             ai_setup = generate_board()
             player2_board_json = json.dumps(ai_setup)
             ai_moves = evaluate(board=data['board'])
